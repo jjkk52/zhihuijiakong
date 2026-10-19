@@ -73,10 +73,28 @@ entry/src/main/ets/
 
 ## 下载与安装
 
-- **直接下载**：前往 [Releases](https://github.com/jjkk52/zhihuijiakong/releases) 下载未签名 HAP 包（`entry-default-unsigned.hap`）
+- **直接下载**：前往 [Releases](https://github.com/jjkk52/zhihuijiakong/releases) 下载未签名 HAP 包（`zhihuijiakong-v1.0.2-unsigned.hap`）
 - **源码构建**：克隆本仓库后使用 DevEco Studio 构建运行（见下方[构建与运行](#构建与运行)）
 
-> ⚠️ 本项目以**未签名包**形式分发，未签名 HAP **不能直接安装**到设备：请参考下方[关于签名](#关于签名本项目分发未签名包)自行完成签名后再安装。
+> ⚠️ 本项目以**未签名包**形式分发，未签名 HAP **不能直接安装**到设备，需先完成调试签名。
+
+### 使用开源工具签名安装（免 DevEco Studio，推荐）
+
+无需下载几个 GB 的 DevEco Studio，只需一个华为开发者账号，即可用以下社区开源工具一键「签名 + 安装」：
+
+| 工具 | 平台 | 特点 |
+|---|---|---|
+| [小白调试助手 auto-installer](https://github.com/likuai2010/auto-installer) | Windows / macOS / Linux | 社区最常用：华为账号登录后自动生成调试证书与 Profile，一键签名、安装、启动 |
+| [鸿蒙安装助手 hap-installer](https://github.com/amw1933/hap-installer) | Windows | 绿色免安装单文件 exe：华为账号登录后把 HAP 拖进窗口即可签名安装 |
+| [HapInstaller](https://github.com/LMV475/hap-installer) | HarmonyOS 手机端 | 安装到手机后可**完全脱离 PC**，直接在手机上为其他 HAP 签名安装 |
+
+通用流程：手机开启 USB / 无线调试 → 电脑连接手机 → 工具内登录华为账号 → 导入下载的未签名 HAP → 一键签名安装。
+
+> 上述均为第三方开源工具（签名 Profile 绑定你自己的华为账号与设备），使用前请自行评估安全性；更多侧载实践可参考 [harmonyos-sideload-guide](https://github.com/Richard1037/harmonyos-sideload-guide)。
+
+### DevEco Studio 源码构建
+
+克隆本仓库后使用 DevEco Studio 构建运行，见下方[构建与运行](#构建与运行)。
 
 ## 构建与运行
 
