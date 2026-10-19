@@ -1,4 +1,5 @@
 import { DeviceIcon, getIconText } from '../../mi/types';
+import { StatusTexts } from '../../common/StatusTexts';
 
 @Entry
 @Component
@@ -10,7 +11,7 @@ struct ElevatorWidget {
   @LocalStorageProp('piid') piid: number = 1;
   @LocalStorageProp('deviceName') deviceName: string = '';
   @LocalStorageProp('iconType') iconType: number = DeviceIcon.Generic;
-  @LocalStorageProp('statusText') statusText: string = '\u52A0\u8F7D\u4E2D...';
+  @LocalStorageProp('statusText') statusText: string = StatusTexts.loading;
   @LocalStorageProp('dimension') dimension: string = '2*2';
 
   build() {
@@ -34,38 +35,38 @@ struct ElevatorWidget {
     return this.did.length === 0;
   }
 
-  private getCardBgColor(): string {
+  private getCardBgColor(): ResourceColor {
     if (this.isUnbound()) {
-      return '#F5F5F5';
+      return $r('app.color.unbound_bg');
     }
     return this.getBgColor();
   }
 
-  private getIconColor(): string {
+  private getIconColor(): ResourceColor {
     if (this.isOffline) {
-      return '#E57373';
+      return $r('app.color.offline_red');
     }
     if (this.isUnbound()) {
-      return '#9E9E9E';
+      return $r('app.color.status_off');
     }
-    return this.isOn ? '#2E7D32' : '#757575';
+    return this.isOn ? $r('app.color.icon_on') : $r('app.color.icon_off');
   }
 
-  private getStatusColor(): string {
+  private getStatusColor(): ResourceColor {
     if (this.isOffline) {
-      return '#E57373';
+      return $r('app.color.offline_red');
     }
     if (this.isUnbound()) {
-      return '#BDBDBD';
+      return $r('app.color.text_disabled');
     }
-    return this.isOn ? '#4CAF50' : '#9E9E9E';
+    return this.isOn ? $r('app.color.status_on') : $r('app.color.status_off');
   }
 
-  private getBgColor(): string {
+  private getBgColor(): ResourceColor {
     if (this.isOffline) {
-      return '#FFEBEE';
+      return $r('app.color.card_offline_bg');
     }
-    return this.isOn ? '#C8E6C9' : '#EEEEEE';
+    return this.isOn ? $r('app.color.card_on_bg') : $r('app.color.card_off_bg');
   }
 
   private getDisplayIcon(): string {
@@ -75,16 +76,16 @@ struct ElevatorWidget {
     return getIconText(this.iconType);
   }
 
-  private getDisplayName(): string {
+  private getDisplayName(): ResourceStr {
     if (this.isUnbound()) {
-      return '\u70B9\u51FB\u5173\u8054\u8BBE\u5907';
+      return $r('app.string.widget_link_device');
     }
     return this.deviceName;
   }
 
-  private getDisplayStatus(): string {
+  private getDisplayStatus(): ResourceStr {
     if (this.isUnbound()) {
-      return '\u70B9\u51FB\u6DFB\u52A0\u8BBE\u5907';
+      return $r('app.string.widget_add_device_hint');
     }
     return this.statusText;
   }
@@ -100,7 +101,7 @@ struct ElevatorWidget {
         Text(this.getDisplayName())
           .fontSize(11)
           .fontWeight(FontWeight.Medium)
-          .fontColor(this.isUnbound() ? '#757575' : '#333333')
+          .fontColor(this.isUnbound() ? $r('app.color.icon_off') : $r('app.color.text_primary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
@@ -124,15 +125,19 @@ struct ElevatorWidget {
   @Builder
   buildMediumCard() {
     Column() {
-      Text(this.getDisplayIcon())
-        .fontSize(this.isUnbound() ? 38 : 32)
-        .fontColor(this.getIconColor())
-        .margin({ top: 12, bottom: 6 })
+      Column() {
+        Text(this.getDisplayIcon())
+          .fontSize(this.isUnbound() ? 38 : 32)
+          .fontColor(this.getIconColor())
+      }
+      .height(46)
+      .justifyContent(FlexAlign.Center)
+      .margin({ top: 12, bottom: 6 })
 
       Text(this.getDisplayName())
         .fontSize(13)
         .fontWeight(FontWeight.Medium)
-        .fontColor(this.isUnbound() ? '#757575' : '#333333')
+        .fontColor(this.isUnbound() ? $r('app.color.icon_off') : $r('app.color.text_primary'))
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('85%')
@@ -155,16 +160,21 @@ struct ElevatorWidget {
   @Builder
   buildWideCard() {
     Row() {
-      Text(this.getDisplayIcon())
-        .fontSize(this.isUnbound() ? 44 : 36)
-        .fontColor(this.getIconColor())
-        .margin({ left: 16, right: 14 })
+      Column() {
+        Text(this.getDisplayIcon())
+          .fontSize(this.isUnbound() ? 44 : 36)
+          .fontColor(this.getIconColor())
+      }
+      .width(56)
+      .height(56)
+      .justifyContent(FlexAlign.Center)
+      .margin({ left: 16, right: 14 })
 
       Column() {
         Text(this.getDisplayName())
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
-          .fontColor(this.isUnbound() ? '#757575' : '#333333')
+          .fontColor(this.isUnbound() ? $r('app.color.icon_off') : $r('app.color.text_primary'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
@@ -188,15 +198,19 @@ struct ElevatorWidget {
   @Builder
   buildLargeCard() {
     Column() {
-      Text(this.getDisplayIcon())
-        .fontSize(this.isUnbound() ? 56 : 48)
-        .fontColor(this.getIconColor())
-        .margin({ top: 20, bottom: 8 })
+      Column() {
+        Text(this.getDisplayIcon())
+          .fontSize(this.isUnbound() ? 56 : 48)
+          .fontColor(this.getIconColor())
+      }
+      .height(64)
+      .justifyContent(FlexAlign.Center)
+      .margin({ top: 20, bottom: 8 })
 
       Text(this.getDisplayName())
         .fontSize(18)
         .fontWeight(FontWeight.Medium)
-        .fontColor(this.isUnbound() ? '#757575' : '#333333')
+        .fontColor(this.isUnbound() ? $r('app.color.icon_off') : $r('app.color.text_primary'))
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('80%')

@@ -13,6 +13,9 @@ export class CryptoUtil {
   }
 
   static async md5HexUpper(data: string): Promise<string> {
+    if (data.length === 0) {
+      return 'D41D8CD98F00B204E9800998ECF8427E';
+    }
     const encoder = new util.TextEncoder();
     const input = encoder.encodeInto(data);
     const md = cryptoFramework.createMd('MD5');

@@ -3,6 +3,7 @@ import { MiAuthService } from '../mijia/MiAuthService';
 import { UserDevice, DeviceIcon, getIconText, WidgetFormData } from '../mi/types';
 import { formBindingData, formProvider } from '@kit.FormKit';
 import { PreferencesUtil } from '../mijia/PreferencesUtil';
+import { StatusTexts } from '../common/StatusTexts';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
 
@@ -72,15 +73,15 @@ struct WidgetEditPage {
         formData.deviceName = ud !== null ? (ud.alias.length > 0 ? ud.alias : ud.name) : '';
         formData.iconType = ud !== null ? ud.icon : DeviceIcon.Generic;
         formData.dimension = await this.getFormDimension(this.formId);
-        formData.statusText = '\u52A0\u8F7D\u4E2D...';
+        formData.statusText = StatusTexts.loading;
         try {
           const state = await MiDeviceService.getInstance().getSwitchStateByDid(
             ud !== null ? ud.did : '',
             ud !== null ? ud.siid : 2, ud !== null ? ud.piid : 1);
           formData.isOn = state ?? false;
-          formData.statusText = state !== undefined ? (state ? '\u5DF2\u5F00\u542F' : '\u5DF2\u5173\u95ED') : '\u72B6\u6001\u672A\u77E5';
+          formData.statusText = state !== undefined ? (state ? StatusTexts.on : StatusTexts.off) : StatusTexts.unknown;
         } catch (e) {
-          formData.statusText = '\u83B7\u53D6\u5931\u8D25';
+          formData.statusText = StatusTexts.loadFailed;
         }
         formProvider.updateForm(this.formId, formBindingData.createFormBindingData(formData));
       }
@@ -146,7 +147,7 @@ struct WidgetEditPage {
   build() {
     Column() {
       Row() {
-        Text('\u5361\u7247\u8BBE\u7F6E')
+        Text($r('app.string.widget_edit_title'))
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor(Color.White)
@@ -157,7 +158,7 @@ struct WidgetEditPage {
       }
       .width('100%')
       .height(56)
-      .backgroundColor('#1976D2')
+      .backgroundColor($r('app.color.brand_primary'))
       .padding({ left: 16, right: 16 })
 
       if (this.isLoading) {
@@ -165,10 +166,10 @@ struct WidgetEditPage {
           LoadingProgress()
             .width(48)
             .height(48)
-            .color('#1976D2')
-          Text('\u52A0\u8F7D\u4E2D...')
+            .color($r('app.color.brand_primary'))
+          Text($r('app.string.loading'))
             .fontSize(14)
-            .fontColor('#999999')
+            .fontColor($r('app.color.text_secondary'))
             .margin({ top: 12 })
         }
         .width('100%')
@@ -177,13 +178,13 @@ struct WidgetEditPage {
         .alignItems(HorizontalAlign.Center)
       } else if (!this.hasDevices) {
         Column() {
-          Text('\u5C1A\u672A\u6DFB\u52A0\u8BBE\u5907')
+          Text($r('app.string.no_device_added'))
             .fontSize(16)
-            .fontColor('#757575')
+            .fontColor($r('app.color.icon_off'))
             .margin({ bottom: 12 })
-          Text('\u8BF7\u5148\u5728\u5E94\u7528\u4E2D\u6DFB\u52A0\u8BBE\u5907')
+          Text($r('app.string.add_device_in_app_hint'))
             .fontSize(13)
-            .fontColor('#999999')
+            .fontColor($r('app.color.text_secondary'))
         }
         .width('100%')
         .layoutWeight(1)
@@ -192,18 +193,23 @@ struct WidgetEditPage {
       } else {
         Scroll() {
           Column() {
-            Text('\u9009\u62E9\u7ED1\u5B9A\u8BBE\u5907')
+            Text($r('app.string.select_bind_device'))
               .fontSize(16)
               .fontWeight(FontWeight.Medium)
-              .fontColor('#333333')
+              .fontColor($r('app.color.text_primary'))
               .width('100%')
               .margin({ bottom: 12 })
 
             ForEach(this.userDevices, (ud: UserDevice) => {
               Row() {
-                Text(getIconText(ud.icon))
-                  .fontSize(24)
-                  .margin({ right: 12 })
+                Column() {
+                  Text(getIconText(ud.icon))
+                    .fontSize(24)
+                }
+                .width(40)
+                .margin({ right: 12 })
+                .justifyContent(FlexAlign.Center)
+                .alignItems(HorizontalAlign.Center)
                 Column() {
                   Text(this.getUdDisplayLabel(ud))
                     .fontSize(15)
@@ -212,22 +218,23 @@ struct WidgetEditPage {
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(ud.model)
                     .fontSize(11)
-                    .fontColor('#999999')
+                    .fontColor($r('app.color.text_secondary'))
                     .margin({ top: 2 })
                 }
                 .alignItems(HorizontalAlign.Start)
                 .layoutWeight(1)
                 if (this.selectedSlotKey === this.getUdKey(ud)) {
-                  Text('\u2713')
+                  Text('✓')
                     .fontSize(22)
-                    .fontColor('#1976D2')
+                    .fontColor($r('app.color.brand_primary'))
                     .margin({ right: 8 })
                 }
               }
               .width('100%')
               .height(60)
               .padding({ left: 16, right: 16 })
-              .backgroundColor(this.selectedSlotKey === this.getUdKey(ud) ? '#E3F2FD' : Color.White)
+              .backgroundColor(this.selectedSlotKey === this.getUdKey(ud) ?
+                $r('app.color.selected_bg') : Color.White)
               .borderRadius(8)
               .margin({ bottom: 8 })
               .onClick(() => {
@@ -235,16 +242,17 @@ struct WidgetEditPage {
               })
             }, (ud: UserDevice) => this.getUdKey(ud))
 
-            Button('\u4FDD\u5B58')
+            Button($r('app.string.btn_save'))
               .width('100%')
               .height(50)
               .type(ButtonType.Capsule)
-              .backgroundColor('#1976D2')
+              .backgroundColor($r('app.color.brand_primary'))
               .fontColor(Color.White)
               .fontSize(16)
               .margin({ top: 20 })
               .enabled(this.selectedSlotKey.length > 0)
-              .backgroundColor(this.selectedSlotKey.length > 0 ? '#1976D2' : '#BBBBBB')
+              .backgroundColor(this.selectedSlotKey.length > 0 ?
+                $r('app.color.brand_primary') : $r('app.color.text_disabled'))
               .onClick(() => {
                 this.saveAndClose();
               })
@@ -259,6 +267,6 @@ struct WidgetEditPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F0F0F0')
+    .backgroundColor($r('app.color.page_bg_alt'))
   }
 }

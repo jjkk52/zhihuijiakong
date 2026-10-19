@@ -31,6 +31,222 @@
     {
       "name": "widget_desc",
       "value": "显示设备状态，点击切换"
+    },
+    {
+      "name": "index_title",
+      "value": "米家控制"
+    },
+    {
+      "name": "btn_detail",
+      "value": "详情"
+    },
+    {
+      "name": "btn_simple",
+      "value": "简洁"
+    },
+    {
+      "name": "not_logged_in",
+      "value": "未登录"
+    },
+    {
+      "name": "login_prompt",
+      "value": "点击登录米家账号"
+    },
+    {
+      "name": "no_device_added",
+      "value": "尚未添加设备"
+    },
+    {
+      "name": "go_settings_add",
+      "value": "前往设置添加设备"
+    },
+    {
+      "name": "status_switching",
+      "value": "切换中..."
+    },
+    {
+      "name": "status_syncing",
+      "value": "同步中..."
+    },
+    {
+      "name": "status_offline",
+      "value": "已离线"
+    },
+    {
+      "name": "status_unknown",
+      "value": "状态未知"
+    },
+    {
+      "name": "status_on",
+      "value": "已开启"
+    },
+    {
+      "name": "status_off",
+      "value": "已关闭"
+    },
+    {
+      "name": "toast_control_failed",
+      "value": "控制失败，请检查设备在线状态"
+    },
+    {
+      "name": "toast_login_expired",
+      "value": "登录已过期，请重新登录"
+    },
+    {
+      "name": "settings_title",
+      "value": "设置"
+    },
+    {
+      "name": "settings_logout",
+      "value": "退出登录"
+    },
+    {
+      "name": "logged_in_label",
+      "value": "已登录"
+    },
+    {
+      "name": "login_title",
+      "value": "米家账号登录"
+    },
+    {
+      "name": "phone_hint",
+      "value": "手机号"
+    },
+    {
+      "name": "password_hint",
+      "value": "密码"
+    },
+    {
+      "name": "otp_hint",
+      "value": "短信验证码"
+    },
+    {
+      "name": "get_otp",
+      "value": "获取验证码"
+    },
+    {
+      "name": "login_button",
+      "value": "登录"
+    },
+    {
+      "name": "logging_in",
+      "value": "登录中..."
+    },
+    {
+      "name": "login_error_empty",
+      "value": "请输入手机号和密码"
+    },
+    {
+      "name": "login_error_need_otp",
+      "value": "请输入短信验证码"
+    },
+    {
+      "name": "otp_resent",
+      "value": "验证码已重新发送"
+    },
+    {
+      "name": "otp_resend_failed",
+      "value": "重发验证码失败: %s"
+    },
+    {
+      "name": "load_devices_failed",
+      "value": "获取设备列表失败: %s"
+    },
+    {
+      "name": "my_devices",
+      "value": "我的设备"
+    },
+    {
+      "name": "btn_add",
+      "value": "+ 添加"
+    },
+    {
+      "name": "btn_edit",
+      "value": "编辑"
+    },
+    {
+      "name": "btn_delete",
+      "value": "删除"
+    },
+    {
+      "name": "btn_save",
+      "value": "保存"
+    },
+    {
+      "name": "btn_cancel",
+      "value": "取消"
+    },
+    {
+      "name": "btn_confirm",
+      "value": "确认"
+    },
+    {
+      "name": "alias_hint",
+      "value": "输入备注名（可留空）"
+    },
+    {
+      "name": "choose_icon",
+      "value": "选择图标"
+    },
+    {
+      "name": "search_hint",
+      "value": "搜索设备名称或型号..."
+    },
+    {
+      "name": "device_count",
+      "value": "共 %d 个设备"
+    },
+    {
+      "name": "already_added",
+      "value": "已添加"
+    },
+    {
+      "name": "dialog_add_device",
+      "value": "添加设备"
+    },
+    {
+      "name": "dialog_device_label",
+      "value": "设备: %s"
+    },
+    {
+      "name": "dialog_location_label",
+      "value": "位置: %s"
+    },
+    {
+      "name": "remove_device_title",
+      "value": "删除设备"
+    },
+    {
+      "name": "remove_device_confirm",
+      "value": "确定删除「%s」吗？"
+    },
+    {
+      "name": "version_footer",
+      "value": "智慧家控 v%s"
+    },
+    {
+      "name": "widget_edit_title",
+      "value": "卡片设置"
+    },
+    {
+      "name": "select_bind_device",
+      "value": "选择绑定设备"
+    },
+    {
+      "name": "add_device_in_app_hint",
+      "value": "请先在应用中添加设备"
+    },
+    {
+      "name": "loading",
+      "value": "加载中..."
+    },
+    {
+      "name": "widget_link_device",
+      "value": "点击关联设备"
+    },
+    {
+      "name": "widget_add_device_hint",
+      "value": "点击添加设备"
     }
   ]
 }

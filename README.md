@@ -33,8 +33,9 @@
 
 ```
 entry/src/main/ets/
-├── common/                  # 全局上下文
-│   └── GlobalContext.ets
+├── common/
+│   ├── GlobalContext.ets    # 全局上下文
+│   └── StatusTexts.ets      # 状态文案常量（服务层共用）
 ├── entryability/            # UIAbility 入口
 │   ├── EntryAbility.ets     # 主入口
 │   └── WidgetEditAbility.ets# 卡片设备绑定页入口
@@ -42,14 +43,17 @@ entry/src/main/ets/
 │   └── ElevatorFormAbility.ets  # 桌面卡片后台（消息处理/状态轮询/刷新）
 ├── mijia/                   # 业务服务层
 │   ├── MiAuthService.ets    # 登录态管理与静默续期
-│   ├── MiDeviceService.ets  # 设备列表/状态/开关控制
-│   ├── PreferencesUtil.ets  # preferences 持久化
-│   └── PreferencesTokenStore.ets
+│   ├── MiDeviceService.ets  # 设备列表/状态/开关控制（批量查询）
+│   ├── PreferencesUtil.ets  # preferences 持久化（进程级缓存策略）
+│   ├── AssetTokenStore.ets  # Asset Store 安全凭据存储（含明文迁移）
+│   └── PreferencesTokenStore.ets  # preferences 回退存储
 ├── mi/                      # 米家协议层
 │   ├── MiAccount.ets        # 小米账号登录（含 OTP 流程）
 │   ├── MiIOService.ets      # miot 设备接口（签名请求/属性读写）
 │   ├── MiHttpTransport.ets  # HTTP 传输与 Cookie 管理
 │   ├── MiTokenStore.ets     # Token 存储接口
+│   ├── CookieParser.ets     # Set-Cookie 解析（纯函数，可单测）
+│   ├── LoginCooldown.ets    # 登录限流冷却（纯逻辑，可单测）
 │   ├── CryptoUtil.ets       # MD5/SHA/HMAC/Base64
 │   ├── MiDebug.ets          # 调试日志
 │   └── types.ets            # 数据模型与设备档案表
@@ -99,14 +103,36 @@ entry/src/main/ets/
    - 浅绿背景 = 已开启；浅灰 = 已关闭；浅红 = 设备离线
 4. 卡片状态每 5 分钟自动同步一次（点击操作后实时轮询刷新）
 
-## 已知问题与改进计划
+## 安全与质量
 
-当前功能完整可用，仍存在若干待改进项（含详细定位与分析），见 [IMPROVEMENTS.md](./IMPROVEMENTS.md)，主要包括：
+- **凭据安全**：米家登录凭据经系统级 **Asset Store** 安全存储，首次升级自动迁移旧明文数据；Asset 服务异常时自动回退本地 preferences 存储保证可用
+- **请求安全**：所有云端请求均经 HMAC-SHA256 签名的 HTTPS 通道
+- **测试**：核心纯逻辑（加解密已知向量、Cookie 解析、设备档案克隆隔离等）已补充单元测试
 
-- 安全：Token 明文存储、UA 硬编码用户 ID
-- 功能：主页"详情"按钮文案不随状态切换、卡片切换瞬间闪灰、卡片轮询不提前退出
-- 性能：状态轮询未使用批量接口、preferences 每次强制重读
-- 可维护性：字符串/颜色未资源化、Cookie 解析代码重复、空 catch 吞错、空壳测试
+历史问题与改进的完整分析见 [IMPROVEMENTS.md](./IMPROVEMENTS.md)（其中所列问题已全部修复，含实施状态表）。
+
+## 引用与致谢
+
+本项目的米家云协议层（`entry/src/main/ets/mi/`）在开发过程中参考并移植了以下开源项目，特此声明与致谢：
+
+### [Yonsm/MiService](https://github.com/Yonsm/MiService)（MIT License，PyPI 包名 `miservice`）
+
+小米云服务 Python 库。本项目以下实现以其 **v3.0.2** 为参考移植为 ArkTS：
+
+- 小米账号登录流程（serviceLogin / serviceLoginAuth2 / serviceToken 客户端签名，含短信/邮箱 OTP 二次验证与重发）
+- HTTP 传输层的 Cookie 管理与请求 UA 约定
+- MiIO 设备接口的签名请求与批量属性读写（`/miotspec/prop/get|set`）
+- 登录限流保护：检测小米账号限流错误码 `70022`，连续 5 次失败后进入 2 小时冷却期，冷却期内不再发起登录请求，避免账号被服务端进一步封锁
+
+### [jjkk52/MiService](https://github.com/jjkk52/MiService)（MIT License）
+
+上述项目的 fork。其「家庭成员账号设备列表为空」修复（commit `69881ce`）已被本项目完整吸收：
+
+- 家庭/房间接口改用 `/v2/homeroom/gethome` 并携带 `fetch_share` / `fetch_share_dev` 参数
+- 合并 `homelist` 与 `share_home_list`，家庭成员账号也能看到共享家庭与设备
+- 设备列表改用 `/v2/home/device_list_page` 按显式 dids 分批（50 个/批）拉取，共享设备不再丢失
+
+以上项目的原始版权与许可请见其仓库中的 [LICENSE](https://github.com/Yonsm/MiService/blob/main/LICENSE) 文件。
 
 ## 免责声明
 

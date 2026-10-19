@@ -1,3 +1,5 @@
+import { StatusTexts } from '../common/StatusTexts';
+
 export interface MiToken {
   deviceId: string;
   userId: string;
@@ -164,7 +166,7 @@ export class UserDevice {
 export class WidgetFormData {
   isOn: boolean = false;
   isOffline: boolean = false;
-  statusText: string = '\u52A0\u8F7D\u4E2D...';
+  statusText: string = StatusTexts.loading;
   did: string = '';
   siid: number = 2;
   piid: number = 1;
@@ -201,75 +203,99 @@ export interface MiioResponse {
   result: Object | null;
 }
 
+function createSlot(siid: number, piid: number, label: string): SwitchSlot {
+  const slot = new SwitchSlot();
+  slot.siid = siid;
+  slot.piid = piid;
+  slot.label = label;
+  return slot;
+}
+
+function createProfile(icon: DeviceIcon, siid: number, piid: number, label: string, slots?: SwitchSlot[]): DeviceProfile {
+  const profile = new DeviceProfile();
+  profile.icon = icon;
+  profile.siid = siid;
+  profile.piid = piid;
+  profile.label = label;
+  if (slots !== undefined) {
+    profile.slots = slots;
+  }
+  return profile;
+}
+
 const DEVICE_PROFILES: Record<string, DeviceProfile> = {
-  'yeelink.light.light': { icon: DeviceIcon.SpotLight, siid: 2, piid: 1, label: '\u5C04\u706F' } as DeviceProfile,
-  'yeelink.light.': { icon: DeviceIcon.Bulb, siid: 2, piid: 1, label: '\u706F' } as DeviceProfile,
-  'philips.light.': { icon: DeviceIcon.Bulb, siid: 2, piid: 1, label: '\u706F' } as DeviceProfile,
-  'lumi.light.': { icon: DeviceIcon.Bulb, siid: 2, piid: 1, label: '\u706F' } as DeviceProfile,
-  'zmowe.light.': { icon: DeviceIcon.Bulb, siid: 2, piid: 1, label: '\u706F' } as DeviceProfile,
-  'zerone.switch.lykg1': { icon: DeviceIcon.Switch, siid: 2, piid: 1, label: '\u5F00\u5173' } as DeviceProfile,
-  'zerone.switch.lykg2': {
-    icon: DeviceIcon.Switch, siid: 2, piid: 1, label: '\u5F00\u5173',
-    slots: [
-      { siid: 2, piid: 1, label: '\u6309\u952E1' } as SwitchSlot,
-      { siid: 3, piid: 1, label: '\u6309\u952E2' } as SwitchSlot,
-    ]
-  } as DeviceProfile,
-  'zerone.switch.': { icon: DeviceIcon.Switch, siid: 2, piid: 1, label: '\u5F00\u5173' } as DeviceProfile,
-  'lumi.switch.acn016': { icon: DeviceIcon.Switch, siid: 2, piid: 1, label: '\u5F00\u5173' } as DeviceProfile,
-  'lumi.switch.acn017': {
-    icon: DeviceIcon.Switch, siid: 2, piid: 1, label: '\u5F00\u5173',
-    slots: [
-      { siid: 2, piid: 1, label: '\u5DE6\u952E' } as SwitchSlot,
-      { siid: 3, piid: 1, label: '\u53F3\u952E' } as SwitchSlot,
-    ]
-  } as DeviceProfile,
-  'lumi.switch.acn018': {
-    icon: DeviceIcon.Switch, siid: 2, piid: 1, label: '\u5F00\u5173',
-    slots: [
-      { siid: 2, piid: 1, label: '\u5DE6\u952E' } as SwitchSlot,
-      { siid: 3, piid: 1, label: '\u4E2D\u952E' } as SwitchSlot,
-      { siid: 4, piid: 1, label: '\u53F3\u952E' } as SwitchSlot,
-    ]
-  } as DeviceProfile,
-  'zimi.switch.': { icon: DeviceIcon.Switch, siid: 2, piid: 1, label: '\u5F00\u5173' } as DeviceProfile,
-  'cuco.switch.': { icon: DeviceIcon.Switch, siid: 2, piid: 1, label: '\u5F00\u5173' } as DeviceProfile,
-  'lumi.switch.': { icon: DeviceIcon.Switch, siid: 2, piid: 1, label: '\u5F00\u5173' } as DeviceProfile,
-  'zwave.switch.': { icon: DeviceIcon.Switch, siid: 2, piid: 1, label: '\u5F00\u5173' } as DeviceProfile,
-  'zhimi.fan.': { icon: DeviceIcon.Fan, siid: 2, piid: 1, label: '\u98CE\u6247' } as DeviceProfile,
-  'dmaker.fan.': { icon: DeviceIcon.Fan, siid: 2, piid: 1, label: '\u98CE\u6247' } as DeviceProfile,
-  'zhimi.aircondition.': { icon: DeviceIcon.AirConditioner, siid: 2, piid: 1, label: '\u7A7A\u8C03' } as DeviceProfile,
-  'zhimi.airpurifier.': { icon: DeviceIcon.AirConditioner, siid: 2, piid: 1, label: '\u51C0\u5316\u5668' } as DeviceProfile,
-  'zhimi.humidifier.': { icon: DeviceIcon.Humidifier, siid: 2, piid: 1, label: '\u52A0\u6E7F\u5668' } as DeviceProfile,
-  'deerma.humidifier.': { icon: DeviceIcon.Humidifier, siid: 2, piid: 1, label: '\u52A0\u6E7F\u5668' } as DeviceProfile,
-  'chuangmi.camera.': { icon: DeviceIcon.Camera, siid: 2, piid: 1, label: '\u6444\u50CF\u5934' } as DeviceProfile,
-  'mjsx.camera.': { icon: DeviceIcon.Camera, siid: 2, piid: 1, label: '\u6444\u50CF\u5934' } as DeviceProfile,
-  'isa.camera.': { icon: DeviceIcon.Camera, siid: 2, piid: 1, label: '\u6444\u50CF\u5934' } as DeviceProfile,
-  'zimi.powerstrip.': { icon: DeviceIcon.Plug, siid: 2, piid: 1, label: '\u63D2\u5EA7' } as DeviceProfile,
-  'cuco.plug.': { icon: DeviceIcon.Plug, siid: 2, piid: 1, label: '\u63D2\u5EA7' } as DeviceProfile,
-  'lumi.curtain.': { icon: DeviceIcon.Curtain, siid: 2, piid: 1, label: '\u7A97\u5E18' } as DeviceProfile,
-  'dooya.curtain.': { icon: DeviceIcon.Curtain, siid: 2, piid: 1, label: '\u7A97\u5E18' } as DeviceProfile,
-  'lumi.lock.': { icon: DeviceIcon.LockLight, siid: 2, piid: 1, label: '\u95E8\u9501' } as DeviceProfile,
-  'lumi.sensor.': { icon: DeviceIcon.Sensor, siid: 2, piid: 1, label: '\u4F20\u611F\u5668' } as DeviceProfile,
-  'lumi.weather.': { icon: DeviceIcon.Sensor, siid: 2, piid: 1, label: '\u4F20\u611F\u5668' } as DeviceProfile,
+  'yeelink.light.light': createProfile(DeviceIcon.SpotLight, 2, 1, '射灯'),
+  'yeelink.light.': createProfile(DeviceIcon.Bulb, 2, 1, '灯'),
+  'philips.light.': createProfile(DeviceIcon.Bulb, 2, 1, '灯'),
+  'lumi.light.': createProfile(DeviceIcon.Bulb, 2, 1, '灯'),
+  'zmowe.light.': createProfile(DeviceIcon.Bulb, 2, 1, '灯'),
+  'zerone.switch.lykg1': createProfile(DeviceIcon.Switch, 2, 1, '开关'),
+  'zerone.switch.lykg2': createProfile(DeviceIcon.Switch, 2, 1, '开关', [
+    createSlot(2, 1, '按键1'),
+    createSlot(3, 1, '按键2')
+  ]),
+  'zerone.switch.': createProfile(DeviceIcon.Switch, 2, 1, '开关'),
+  'lumi.switch.acn016': createProfile(DeviceIcon.Switch, 2, 1, '开关'),
+  'lumi.switch.acn017': createProfile(DeviceIcon.Switch, 2, 1, '开关', [
+    createSlot(2, 1, '左键'),
+    createSlot(3, 1, '右键')
+  ]),
+  'lumi.switch.acn018': createProfile(DeviceIcon.Switch, 2, 1, '开关', [
+    createSlot(2, 1, '左键'),
+    createSlot(3, 1, '中键'),
+    createSlot(4, 1, '右键')
+  ]),
+  'zimi.switch.': createProfile(DeviceIcon.Switch, 2, 1, '开关'),
+  'cuco.switch.': createProfile(DeviceIcon.Switch, 2, 1, '开关'),
+  'lumi.switch.': createProfile(DeviceIcon.Switch, 2, 1, '开关'),
+  'zwave.switch.': createProfile(DeviceIcon.Switch, 2, 1, '开关'),
+  'zhimi.fan.': createProfile(DeviceIcon.Fan, 2, 1, '风扇'),
+  'dmaker.fan.': createProfile(DeviceIcon.Fan, 2, 1, '风扇'),
+  'zhimi.aircondition.': createProfile(DeviceIcon.AirConditioner, 2, 1, '空调'),
+  'zhimi.airpurifier.': createProfile(DeviceIcon.AirConditioner, 2, 1, '净化器'),
+  'zhimi.humidifier.': createProfile(DeviceIcon.Humidifier, 2, 1, '加湿器'),
+  'deerma.humidifier.': createProfile(DeviceIcon.Humidifier, 2, 1, '加湿器'),
+  'chuangmi.camera.': createProfile(DeviceIcon.Camera, 2, 1, '摄像头'),
+  'mjsx.camera.': createProfile(DeviceIcon.Camera, 2, 1, '摄像头'),
+  'isa.camera.': createProfile(DeviceIcon.Camera, 2, 1, '摄像头'),
+  'zimi.powerstrip.': createProfile(DeviceIcon.Plug, 2, 1, '插座'),
+  'cuco.plug.': createProfile(DeviceIcon.Plug, 2, 1, '插座'),
+  'lumi.curtain.': createProfile(DeviceIcon.Curtain, 2, 1, '窗帘'),
+  'dooya.curtain.': createProfile(DeviceIcon.Curtain, 2, 1, '窗帘'),
+  'lumi.lock.': createProfile(DeviceIcon.LockLight, 2, 1, '门锁'),
+  'lumi.sensor.': createProfile(DeviceIcon.Sensor, 2, 1, '传感器'),
+  'lumi.weather.': createProfile(DeviceIcon.Sensor, 2, 1, '传感器')
 };
+
+function cloneProfile(profile: DeviceProfile, known: boolean): DeviceProfile {
+  const cloned = new DeviceProfile();
+  cloned.icon = profile.icon;
+  cloned.siid = profile.siid;
+  cloned.piid = profile.piid;
+  cloned.label = profile.label;
+  cloned.known = known;
+  const slots: SwitchSlot[] = [];
+  for (let i = 0; i < profile.slots.length; i++) {
+    slots.push(createSlot(profile.slots[i].siid, profile.slots[i].piid, profile.slots[i].label));
+  }
+  cloned.slots = slots;
+  return cloned;
+}
 
 export function getDeviceProfile(model: string): DeviceProfile {
   if (model === undefined || model === null) {
     const defaultProfile = new DeviceProfile();
-    defaultProfile.label = '\u8BBE\u5907';
+    defaultProfile.label = '设备';
     return defaultProfile;
   }
   const keys = Object.keys(DEVICE_PROFILES);
   for (let i = 0; i < keys.length; i++) {
     if (model.startsWith(keys[i])) {
-      const profile = DEVICE_PROFILES[keys[i]];
-      profile.known = true;
-      return profile;
+      return cloneProfile(DEVICE_PROFILES[keys[i]], true);
     }
   }
   const defaultProfile = new DeviceProfile();
-  defaultProfile.label = '\u8BBE\u5907';
+  defaultProfile.label = '设备';
   return defaultProfile;
 }
 
@@ -283,57 +309,57 @@ export function isMultiSlotProfile(profile: DeviceProfile): boolean {
 
 export function getIconText(icon: DeviceIcon): string {
   if (icon === DeviceIcon.Switch) {
-    return '\u23FB';
+    return '⏻';
   }
   if (icon === DeviceIcon.SpotLight) {
-    return '\uD83D\uDCA1';
+    return '💡';
   }
   if (icon === DeviceIcon.LockLight) {
-    return '\uD83D\uDD12';
+    return '🔒';
   }
   if (icon === DeviceIcon.Bulb) {
-    return '\uD83D\uDD06';
+    return '🔆';
   }
   if (icon === DeviceIcon.Fan) {
-    return '\uD83D\uDD04';
+    return '🔄';
   }
   if (icon === DeviceIcon.AirConditioner) {
-    return '\u2744';
+    return '❄';
   }
   if (icon === DeviceIcon.Humidifier) {
-    return '\uD83D\uDCA7';
+    return '💧';
   }
   if (icon === DeviceIcon.Camera) {
-    return '\uD83D\uDCF7';
+    return '📷';
   }
   if (icon === DeviceIcon.Plug) {
-    return '\uD83D\uDD0C';
+    return '🔌';
   }
   if (icon === DeviceIcon.Curtain) {
-    return '\uD83D\uDECB';
+    return '🛋';
   }
   if (icon === DeviceIcon.Sensor) {
-    return '\uD83D\uDD0D';
+    return '🔍';
   }
   if (icon === DeviceIcon.Elevator) {
-    return '\uD83D\uDED7';
+    return '🛗';
   }
   if (icon === DeviceIcon.Door) {
-    return '\uD83D\uDEAA';
+    return '🚪';
   }
   if (icon === DeviceIcon.Tv) {
-    return '\uD83D\uDCFA';
+    return '📺';
   }
   if (icon === DeviceIcon.Boiler) {
-    return '\u2668';
+    return '♨';
   }
   if (icon === DeviceIcon.Router) {
-    return '\uD83D\uDCE1';
+    return '📶';
   }
   if (icon === DeviceIcon.Alarm) {
-    return '\uD83D\uDD14';
+    return '🔔';
   }
-  return '\u26A1';
+  return '⚡';
 }
 
 export const WIDGET_ENABLED: boolean = true;

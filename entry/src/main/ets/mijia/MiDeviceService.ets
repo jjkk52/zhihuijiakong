@@ -1,7 +1,11 @@
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { MiAuthService } from './MiAuthService';
 import { MiIOService } from '../mi/MiIOService';
-import { MiDevice, UserDevice, SwitchSlot, HomeRoom, DeviceProfile, getDeviceProfile, isMultiSlotProfile } from '../mi/types';
+import { MiDevice, UserDevice, SwitchSlot, HomeRoom, DeviceProfile, MiioPropParam, getDeviceProfile, isMultiSlotProfile } from '../mi/types';
 import { PreferencesUtil } from './PreferencesUtil';
+
+const DOMAIN = 0x0200;
+const TAG = 'MiDeviceService';
 
 export class MiDeviceService {
   private static instance: MiDeviceService | null = null;
@@ -64,6 +68,7 @@ export class MiDeviceService {
           }
         }
       } catch (e) {
+        hilog.warn(DOMAIN, TAG, 'doLoadAllDevices enrich rooms failed: %{public}s', String(e));
       }
       this.allDevicesCache = devices;
       this.allDevicesCacheTime = Date.now();
@@ -82,6 +87,7 @@ export class MiDeviceService {
       }
       this.onlineMap = map;
     } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'refreshOnlineStatus failed: %{public}s', String(e));
     }
   }
 
@@ -168,12 +174,14 @@ export class MiDeviceService {
     try {
       cloudDevices = await this.getIOService().getDeviceList();
     } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'getMergedUserDevices getDeviceList failed: %{public}s', String(e));
       cloudDevices = [];
     }
     let roomMap: Record<string, HomeRoom> = {} as Record<string, HomeRoom>;
     try {
       roomMap = await this.getIOService().getHomeRooms();
     } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'getMergedUserDevices getHomeRooms failed: %{public}s', String(e));
       roomMap = {} as Record<string, HomeRoom>;
     }
     const result: UserDevice[] = local.slice();
@@ -216,6 +224,7 @@ export class MiDeviceService {
           roomName = hr.roomName;
         }
       } catch (e) {
+        hilog.warn(DOMAIN, TAG, 'addUserDevice query home rooms failed: %{public}s', String(e));
       }
     }
 
@@ -317,6 +326,7 @@ export class MiDeviceService {
       }
       await PreferencesUtil.saveUserDevices(userDevices);
     } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'enrichHomeRooms failed: %{public}s', String(e));
     }
     return userDevices;
   }
@@ -347,7 +357,8 @@ export class MiDeviceService {
   async refreshDeviceStates(userDevices: UserDevice[]): Promise<Record<string, boolean | undefined>> {
     await this.refreshOnlineStatus();
     const states: Record<string, boolean | undefined> = {} as Record<string, boolean | undefined>;
-    const promises: Promise<void>[] = [];
+    const onlineParams: MiioPropParam[] = [];
+    const slotKeys: string[] = [];
     for (let i = 0; i < userDevices.length; i++) {
       const ud = userDevices[i];
       const key = UserDevice.getSlotKey(ud);
@@ -355,11 +366,38 @@ export class MiDeviceService {
         states[key] = undefined;
         continue;
       }
-      promises.push(this.getSwitchStateByDid(ud.did, ud.siid, ud.piid).then((state: boolean | undefined) => {
-        states[key] = state;
-      }));
+      const param: MiioPropParam = { did: ud.did, siid: ud.siid, piid: ud.piid };
+      onlineParams.push(param);
+      slotKeys.push(key);
+      states[key] = undefined;
     }
-    await Promise.all(promises);
+    if (onlineParams.length === 0) {
+      return states;
+    }
+    try {
+      const results = await this.getIOService().getProperties(onlineParams);
+      for (let i = 0; i < results.length; i++) {
+        const item = results[i];
+        const resultKey = UserDevice.makeSlotKey(item.did, item.siid, item.piid);
+        if (item.code !== 0) {
+          states[resultKey] = undefined;
+        } else if (item.value === null) {
+          states[resultKey] = undefined;
+        } else {
+          states[resultKey] = item.value === true || item.value === 1;
+        }
+      }
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'refreshDeviceStates batch get failed, fallback to per-device: %{public}s', String(error));
+      const promises: Promise<void>[] = [];
+      for (let i = 0; i < onlineParams.length; i++) {
+        const idx = i;
+        promises.push(this.getSwitchStateByDid(onlineParams[idx].did, onlineParams[idx].siid, onlineParams[idx].piid).then((state: boolean | undefined) => {
+          states[slotKeys[idx]] = state;
+        }));
+      }
+      await Promise.all(promises);
+    }
     return states;
   }
 
@@ -374,15 +412,22 @@ export class MiDeviceService {
       }
       return value === true || value === 1;
     } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'getSwitchStateByDid failed did=%{public}s: %{public}s', did, String(error));
       return undefined;
     }
   }
 
-  async toggleSwitchByDid(did: string, siid: number, piid: number): Promise<boolean> {
+  async toggleSwitchByDid(did: string, siid: number, piid: number): Promise<boolean | undefined> {
     try {
-      return await this.getIOService().toggleSwitch(did, siid, piid);
+      const result = await this.getIOService().toggleSwitch(did, siid, piid);
+      if (result === null) {
+        hilog.warn(DOMAIN, TAG, 'toggleSwitchByDid set failed did=%{public}s', did);
+        return undefined;
+      }
+      return result;
     } catch (error) {
-      return false;
+      hilog.warn(DOMAIN, TAG, 'toggleSwitchByDid failed did=%{public}s: %{public}s', did, String(error));
+      return undefined;
     }
   }
 
@@ -407,6 +452,7 @@ export class MiDeviceService {
         }
         lastState = state;
       } catch (e) {
+        hilog.warn(DOMAIN, TAG, 'pollSwitchState poll failed did=%{public}s count=%{public}d: %{public}s', did, pollCount, String(e));
         if (pollCount >= maxPolls) {
           onResult(undefined);
           return;

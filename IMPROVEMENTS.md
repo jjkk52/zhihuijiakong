@@ -1,8 +1,10 @@
 # 代码分析与改进报告
 
-> 本报告基于 2026-10 对代码库的完整通读，仅作记录与改进建议，**不伴随任何代码改动**。
+> 本报告基于 2026-10 对代码库的完整通读。
 > 应用当前功能完全正常：登录、设备控制、桌面卡片均按预期工作。
 > 报告中的问题按 `P0（安全）→ P1（功能瑕疵）→ P2（性能）→ P3（可维护性）` 分级。
+>
+> **✅ 2026-10 更新：下述全部问题已实施修复，详见文末[「四、实施状态」](#四实施状态)。第二节中的行号为分析时快照，可能与当前代码不对应。**
 
 ---
 
@@ -154,3 +156,29 @@
 | `.gitignore` 增强 | 排除 `sign/`（发布私钥与密码）、`MYpythonSourceCode/`（含 `.mi.token` 凭据）、`*.hap/*.app` 产物、日志、截图、含设备序列号的个人安装脚本 |
 | `build-profile.json5` release 段脱敏 | 密码与证书路径清空并注释说明，debug 自动签名保留原样 |
 | 删除过时 `README_CONFIG.md` | 内容（电梯按钮、ArkUI-X 构建失败）与现状严重不符，已被本报告与新的 `README.md` 取代 |
+
+---
+
+## 四、实施状态
+
+> 2026-10：下列改进已全部实施完毕，并已通过 ArkTS 静态检查与 debug/release 构建。
+
+| 编号 | 问题 | 实施结果 |
+|---|---|---|
+| P0-1 | Token 明文存储 | ✅ 新建 `AssetTokenStore`（`@kit.AssetStoreKit`）保存凭据，首次启动自动迁移旧 preferences 明文数据并删除原记录；Asset 异常时回退 preferences 存储保证可用性 |
+| P0-2 | UA 硬编码用户 ID | ✅ `UA_OTP` 改为含 `%USERID%`/`%DEVICEID%` 占位符的模板 + `buildOtpUa()` 运行时拼接；`MiIOService` 同步改为 `buildUaMiio()` 动态拼接 |
+| P1-1 | "详情"按钮两分支文案相同 | ✅ 改为 `showDetail ? 简洁 : 详情`（`$r('app.string.btn_simple')` / `btn_detail`） |
+| P1-2 | 卡片切换瞬间闪灰 | ✅ `pushSwitchingToAllForms` 推送时保留原 `isOn`/`isOffline`，切换中仅文字变化、底色不变 |
+| P1-3 | 卡片轮询不提前退出 | ✅ `toggleSwitch` 返回写入的新值作为预期值，`startSwitchPolling` 增加 `expectedValue` 参数，`state === expectedValue` 时立即推送并清除 `switchingDevices` 提前退出 |
+| P2-1 | 状态轮询未批量 | ✅ `MiIOService` 新增 `getProperties()` 批量接口，`refreshDeviceStates` 合并为单次 `/miotspec/prop/get`；失败自动回退逐设备查询 |
+| P2-2 | preferences 强制重读 | ✅ `PreferencesUtil` 增加 `forceReload` 标志：主进程（`EntryAbility`）关闭强制重读走缓存，卡片进程（`ElevatorFormAbility`）保持强制重读 |
+| P2-3 | `httpGetJson` 独立 HTTP 路径 | ✅ 统一走 `MiHttpTransport`，删除 `import { http }` |
+| P3-1 | WidgetEditAbility 旧模板 skills | ✅ 已从 `module.json5` 删除 |
+| P3-2 | `\uXXXX` 硬编码 | ✅ UI 层（Index/SettingsPage/WidgetEditPage/ElevatorWidget）文案与颜色全部迁入 `string.json`/`color.json`，`$r` 引用；服务层文案收敛为 `common/StatusTexts.ets` 常量并转为可读中文 |
+| P3-3 | Cookie 解析重复 | ✅ 提取纯函数模块 `mi/CookieParser.ets`，`MiHttpTransport` 两处统一调用 |
+| P3-4 | 空 catch 吞错 | ✅ 全部空 `catch` 补 `hilog.warn/error` |
+| P3-5 | 档案表副作用与断言 | ✅ `types.ets` 重写：工厂函数 `createSlot`/`createProfile` 构建档案表，`getDeviceProfile` 经 `cloneProfile` 每次返回深拷贝，去除全部 `as` 断言与共享可变状态 |
+| P3-6 | 冗余请求参数类 | ✅ 删除 `MiioGetParams`/`MiioGetHomeParams`，统一 `buildGetHomeParams()` 返回 `Record` |
+| P3-7 | 空壳测试 | ✅ `LocalUnit.test.ets` 补 CookieParser/UserDevice/getDeviceProfile 克隆隔离/protectBigNumbers 纯逻辑测试；`Ability.test.ets` 补 CryptoUtil 已知向量（MD5/SHA-1/SHA-256/RFC 4231 HMAC）与 Base64 等测试 |
+
+> 2026-10 追加：对照上游 [Yonsm/MiService](https://github.com/Yonsm/MiService) v3.0.2 与 [jjkk52/MiService](https://github.com/jjkk52/MiService) fork 复核协议层，确认「家庭成员账号设备列表修复」（fork commit `69881ce`：`/v2/homeroom/gethome` + `fetch_share`、`share_home_list` 合并、`/v2/home/device_list_page` 显式 dids 分批）此前已完整移植；补齐遗漏的**登录限流保护**（`MiAccount.ets`：`70022` 连续 5 次失败进入 2 小时冷却，冷却期内 `login()` / `refreshToken()` 不再发起登录请求，行为与上游 `miaccount.py` 对齐）。引用关系已在 [README.md](./README.md)「引用与致谢」声明。

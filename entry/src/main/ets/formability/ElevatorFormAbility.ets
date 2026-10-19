@@ -7,6 +7,7 @@ import { PreferencesUtil } from '../mijia/PreferencesUtil';
 import { MiAuthService } from '../mijia/MiAuthService';
 import { MiDeviceService } from '../mijia/MiDeviceService';
 import { WidgetFormData, WidgetToggleMessage, UserDevice, DeviceIcon } from '../mi/types';
+import { StatusTexts } from '../common/StatusTexts';
 
 const DOMAIN = 0x0200;
 const TAG = 'SwitchForm';
@@ -55,7 +56,7 @@ export default class SwitchFormAbility extends FormExtensionAbility {
     try {
       const data = await this.getWidgetFormData(formId);
       if (data.did.length > 0 && this.switchingDevices[data.did]) {
-        data.statusText = '\u5207\u6362\u4E2D...';
+        data.statusText = StatusTexts.switching;
       }
       hilog.info(DOMAIN, TAG, 'onUpdateForm push did=%{public}s name=%{public}s dim=%{public}s status=%{public}s', data.did, data.deviceName, data.dimension, data.statusText);
       await formProvider.updateForm(formId, formBindingData.createFormBindingData(data));
@@ -86,7 +87,7 @@ export default class SwitchFormAbility extends FormExtensionAbility {
           const slotKey = await this.getFormDevice(formId);
           if (slotKey.length === 0) {
             const errData = new WidgetFormData();
-            errData.statusText = '\u65E0\u8BBE\u5907';
+            errData.statusText = StatusTexts.noDevice;
             errData.dimension = dim;
             formProvider.updateForm(formId, formBindingData.createFormBindingData(errData));
             return;
@@ -115,7 +116,7 @@ export default class SwitchFormAbility extends FormExtensionAbility {
 
         if (did.length === 0) {
           const errData = new WidgetFormData();
-          errData.statusText = '\u65E0\u8BBE\u5907';
+          errData.statusText = StatusTexts.noDevice;
           errData.dimension = dim;
           formProvider.updateForm(formId, formBindingData.createFormBindingData(errData));
           return;
@@ -126,29 +127,35 @@ export default class SwitchFormAbility extends FormExtensionAbility {
         }
 
         this.switchingDevices[did] = true;
+        let currentOn = this.deviceStates[did];
+        if (currentOn === undefined) {
+          currentOn = await deviceService.getSwitchStateByDid(did, siid, piid);
+        }
         const switchingData = new WidgetFormData();
-        switchingData.statusText = '\u5207\u6362\u4E2D...';
+        switchingData.statusText = StatusTexts.switching;
+        switchingData.isOn = currentOn ?? false;
+        switchingData.isOffline = deviceService.isDeviceOnline(did) === false;
         switchingData.did = did;
         switchingData.siid = siid;
         switchingData.piid = piid;
         switchingData.deviceName = deviceName;
         switchingData.iconType = iconType;
         switchingData.dimension = dim;
-        this.pushSwitchingToAllForms(did, deviceName, iconType, switchingData);
+        this.pushSwitchingToAllForms(did, switchingData);
 
         try {
-          const success = await deviceService.toggleSwitchByDid(did, siid, piid);
-          hilog.info(DOMAIN, TAG, 'toggle did=%{public}s result=%{public}s', did, String(success));
-          if (success) {
-            this.startSwitchPolling(did, siid, piid);
+          const newState = await deviceService.toggleSwitchByDid(did, siid, piid);
+          hilog.info(DOMAIN, TAG, 'toggle did=%{public}s result=%{public}s', did, String(newState));
+          if (newState !== undefined) {
+            this.startSwitchPolling(did, siid, piid, newState);
           } else {
             this.switchingDevices[did] = false;
-            this.pushStateToAllForms(did, undefined, '\u63A7\u5236\u5931\u8D25');
+            this.pushStateToAllForms(did, undefined, StatusTexts.controlFailed);
           }
         } catch (toggleError) {
           this.switchingDevices[did] = false;
           hilog.error(DOMAIN, TAG, 'toggle error: %{public}s', String(toggleError));
-          this.pushStateToAllForms(did, undefined, '\u63A7\u5236\u5931\u8D25');
+          this.pushStateToAllForms(did, undefined, StatusTexts.controlFailed);
         }
       }
     } catch (e) {
@@ -161,7 +168,7 @@ export default class SwitchFormAbility extends FormExtensionAbility {
     this.unbindFormDevice(formId);
   }
 
-  private startSwitchPolling(did: string, siid: number, piid: number): void {
+  private startSwitchPolling(did: string, siid: number, piid: number, expectedValue: boolean): void {
     const maxPolls = 20;
     const intervalMs = 200;
     let pollCount = 0;
@@ -173,8 +180,13 @@ export default class SwitchFormAbility extends FormExtensionAbility {
         if (state !== undefined) {
           this.deviceStates[did] = state;
         }
-        const statusText = state !== undefined ? (state ? '\u5DF2\u5F00\u542F' : '\u5DF2\u5173\u95ED') : '\u72B6\u6001\u672A\u77E5';
+        const statusText = state !== undefined ? (state ? StatusTexts.on : StatusTexts.off) : StatusTexts.unknown;
         this.pushStateToAllForms(did, state, statusText);
+        if (state !== undefined && state === expectedValue) {
+          hilog.info(DOMAIN, TAG, 'switchPoll reached expected did=%{public}s status=%{public}s count=%{public}d', did, statusText, pollCount);
+          this.switchingDevices[did] = false;
+          return;
+        }
         hilog.info(DOMAIN, TAG, 'switchPoll did=%{public}s status=%{public}s count=%{public}d', did, statusText, pollCount);
       } catch (e) {
         hilog.error(DOMAIN, TAG, 'switchPoll error: %{public}s', String(e));
@@ -194,6 +206,7 @@ export default class SwitchFormAbility extends FormExtensionAbility {
     } catch (e) {
       GlobalContext.initContext(this.context);
     }
+    PreferencesUtil.setForceReload(true);
   }
 
   private async saveFormDimension(formId: string, dimension: string): Promise<void> {
@@ -225,7 +238,7 @@ export default class SwitchFormAbility extends FormExtensionAbility {
       const dim = await this.getFormDimension(formId);
       if (slotKey.length === 0) {
         const data = new WidgetFormData();
-        data.statusText = '\u65E0\u8BBE\u5907';
+        data.statusText = StatusTexts.noDevice;
         data.dimension = dim;
         return data;
       }
@@ -249,7 +262,7 @@ export default class SwitchFormAbility extends FormExtensionAbility {
       const data = new WidgetFormData();
       data.isOn = state ?? false;
       data.isOffline = did.length === 0 || (deviceService.isDeviceOnline(did) === false);
-      data.statusText = data.isOffline ? '\u5DF2\u79BB\u7EBF' : (state !== undefined ? (state ? '\u5DF2\u5F00\u542F' : '\u5DF2\u5173\u95ED') : '\u72B6\u6001\u672A\u77E5');
+      data.statusText = data.isOffline ? StatusTexts.offline : (state !== undefined ? (state ? StatusTexts.on : StatusTexts.off) : StatusTexts.unknown);
       data.did = did;
       data.siid = siid;
       data.piid = piid;
@@ -260,7 +273,7 @@ export default class SwitchFormAbility extends FormExtensionAbility {
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'getWidgetFormData error: %{public}s', String(e));
       const data = new WidgetFormData();
-      data.statusText = '\u83B7\u53D6\u5931\u8D25';
+      data.statusText = StatusTexts.loadFailed;
       return data;
     }
   }
@@ -335,7 +348,7 @@ export default class SwitchFormAbility extends FormExtensionAbility {
     return map[formId] ?? '';
   }
 
-  private async pushSwitchingToAllForms(did: string, deviceName: string, iconType: number, switchingData: WidgetFormData): Promise<void> {
+  private async pushSwitchingToAllForms(did: string, switchingData: WidgetFormData): Promise<void> {
     try {
       const deviceService = MiDeviceService.getInstance();
       const userDevices = await deviceService.getUserDevices();
@@ -358,12 +371,14 @@ export default class SwitchFormAbility extends FormExtensionAbility {
           continue;
         }
         const data = new WidgetFormData();
-        data.statusText = '\u5207\u6362\u4E2D...';
+        data.statusText = switchingData.statusText;
+        data.isOn = switchingData.isOn;
+        data.isOffline = switchingData.isOffline;
         data.did = did;
         data.siid = switchingData.siid;
         data.piid = switchingData.piid;
-        data.deviceName = deviceName;
-        data.iconType = iconType;
+        data.deviceName = switchingData.deviceName;
+        data.iconType = switchingData.iconType;
         data.dimension = await this.getFormDimension(fid);
         hilog.info(DOMAIN, TAG, 'pushSwitching -> %{public}s dim=%{public}s', fid, data.dimension);
         formProvider.updateForm(fid, formBindingData.createFormBindingData(data)).then(() => {

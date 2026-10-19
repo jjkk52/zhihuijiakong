@@ -14,7 +14,8 @@ struct Index {
   @State userDevices: UserDevice[] = [];
   @State devicesVersion: number = 0;
   @State deviceStates: Record<string, boolean | undefined> = {} as Record<string, boolean | undefined>;
-  @State loadingDids: Record<string, boolean> = {} as Record<string, boolean>;  @State hasToken: boolean = false;
+  @State loadingDids: Record<string, boolean> = {} as Record<string, boolean>;
+  @State hasToken: boolean = false;
   @State isRefreshing: boolean = false;
   @State showDetail: boolean = false;
   private deviceService: MiDeviceService = MiDeviceService.getInstance();
@@ -98,14 +99,12 @@ struct Index {
       return;
     }
     this.loadingDids[key] = true;
-    const currentState = this.deviceStates[key];
-    const expectedNewState = !(currentState ?? false);
     hilog.info(DOMAIN, TAG, 'onDeviceClick did=%{public}s siid=%{public}d piid=%{public}d', ud.did, ud.siid, ud.piid);
 
     try {
-      const success = await this.deviceService.toggleSwitchByDid(ud.did, ud.siid, ud.piid);
-      if (success) {
-        this.deviceService.pollSwitchState(ud.did, ud.siid, ud.piid, expectedNewState, (state: boolean | undefined) => {
+      const newState = await this.deviceService.toggleSwitchByDid(ud.did, ud.siid, ud.piid);
+      if (newState !== undefined) {
+        this.deviceService.pollSwitchState(ud.did, ud.siid, ud.piid, newState, (state: boolean | undefined) => {
           this.loadingDids[key] = false;
           const newStates: Record<string, boolean | undefined> = {} as Record<string, boolean | undefined>;
           const keys = Object.keys(this.deviceStates);
@@ -117,15 +116,15 @@ struct Index {
         });
       } else {
         this.loadingDids[key] = false;
-        this.showToast('\u63A7\u5236\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u8BBE\u5907\u5728\u7EBF\u72B6\u6001');
+        this.showToast($r('app.string.toast_control_failed'));
       }
     } catch (error) {
       this.loadingDids[key] = false;
       const msg = String(error);
-      if (msg.includes('\u8BA4\u8BC1\u5931\u6548') || msg.includes('auth')) {
-        this.showToast('\u767B\u5F55\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55');
+      if (msg.includes('认证失效') || msg.includes('auth')) {
+        this.showToast($r('app.string.toast_login_expired'));
       } else {
-        this.showToast('\u63A7\u5236\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u8BBE\u5907\u5728\u7EBF\u72B6\u6001');
+        this.showToast($r('app.string.toast_control_failed'));
       }
     }
   }
@@ -138,7 +137,7 @@ struct Index {
     }
   }
 
-  private showToast(msg: string): void {
+  private showToast(msg: ResourceStr): void {
     try {
       this.getUIContext().getPromptAction().showToast({ message: msg, duration: 2000 });
     } catch (e) {
@@ -146,22 +145,22 @@ struct Index {
     }
   }
 
-  private getDeviceStatusText(ud: UserDevice): string {
+  private getDeviceStatusText(ud: UserDevice): ResourceStr {
     const key = this.deviceKey(ud);
     if (this.loadingDids[key]) {
-      return '\u5207\u6362\u4E2D...';
+      return $r('app.string.status_switching');
     }
     if (this.isRefreshing) {
-      return '\u540C\u6B65\u4E2D...';
+      return $r('app.string.status_syncing');
     }
     const state = this.deviceStates[key];
     if (state === undefined) {
       if (!this.deviceService.isDeviceOnline(ud.did)) {
-        return '\u5DF2\u79BB\u7EBF';
+        return $r('app.string.status_offline');
       }
-      return '\u72B6\u6001\u672A\u77E5';
+      return $r('app.string.status_unknown');
     }
-    return state ? '\u5DF2\u5F00\u542F' : '\u5DF2\u5173\u95ED';
+    return state ? $r('app.string.status_on') : $r('app.string.status_off');
   }
 
   private isDeviceOn(ud: UserDevice): boolean {
@@ -176,22 +175,22 @@ struct Index {
     return false;
   }
 
-  private getCardBgColor(ud: UserDevice): string {
+  private getCardBgColor(ud: UserDevice): ResourceColor {
     const key = this.deviceKey(ud);
     if (this.loadingDids[key]) {
-      return '#FFF3E0';
+      return $r('app.color.switching_bg');
     }
     if (this.isDeviceOffline(ud)) {
-      return '#FFEBEE';
+      return $r('app.color.card_offline_bg');
     }
-    return this.isDeviceOn(ud) ? '#C8E6C9' : '#EEEEEE';
+    return this.isDeviceOn(ud) ? $r('app.color.card_on_bg') : $r('app.color.card_off_bg');
   }
 
-  private getIconColor(ud: UserDevice): string {
+  private getIconColor(ud: UserDevice): ResourceColor {
     if (this.isDeviceOffline(ud)) {
-      return '#E57373';
+      return $r('app.color.offline_red');
     }
-    return this.isDeviceOn(ud) ? '#2E7D32' : '#757575';
+    return this.isDeviceOn(ud) ? $r('app.color.icon_on') : $r('app.color.icon_off');
   }
 
   private getDisplayName(ud: UserDevice): string {
@@ -201,23 +200,23 @@ struct Index {
   build() {
     Column() {
       Row() {
-        Text('\u7C73\u5BB6\u63A7\u5236')
+        Text($r('app.string.index_title'))
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor(Color.White)
           .layoutWeight(1)
-        Button(this.showDetail ? '\u8BE6\u60C5' : '\u8BE6\u60C5')
+        Button(this.showDetail ? $r('app.string.btn_simple') : $r('app.string.btn_detail'))
           .height(28)
           .type(ButtonType.Capsule)
-          .backgroundColor(this.showDetail ? '#33FFFFFF' : Color.Transparent)
-          .fontColor(this.showDetail ? Color.White : '#99FFFFFF')
+          .backgroundColor(this.showDetail ? $r('app.color.header_btn_bg') : Color.Transparent)
+          .fontColor(this.showDetail ? Color.White : $r('app.color.header_btn_text_dim'))
           .fontSize(12)
           .margin({ right: 6 })
           .onClick(() => {
             this.showDetail = !this.showDetail;
           })
         Button({ type: ButtonType.Circle }) {
-          Text('\u21BB')
+          Text('↻')
             .fontSize(22)
             .fontColor(Color.White)
         }
@@ -228,7 +227,7 @@ struct Index {
           this.refreshStates(true);
         })
         Button({ type: ButtonType.Circle }) {
-          Text('\u2699')
+          Text('⚙')
             .fontSize(22)
             .fontColor(Color.White)
         }
@@ -242,17 +241,17 @@ struct Index {
       .width('100%')
       .height(56)
       .padding({ left: 20, right: 10 })
-      .backgroundColor('#1976D2')
+      .backgroundColor($r('app.color.brand_primary'))
 
       if (!this.hasToken) {
         Column() {
-          Text('\u672A\u767B\u5F55')
+          Text($r('app.string.not_logged_in'))
             .fontSize(18)
-            .fontColor('#757575')
+            .fontColor($r('app.color.icon_off'))
             .margin({ bottom: 12 })
-          Text('\u70B9\u51FB\u767B\u5F55\u7C73\u5BB6\u8D26\u53F7')
+          Text($r('app.string.login_prompt'))
             .fontSize(14)
-            .fontColor('#1976D2')
+            .fontColor($r('app.color.brand_primary'))
             .onClick(() => {
               this.goSettings();
             })
@@ -264,13 +263,13 @@ struct Index {
         .padding({ top: 40 })
       } else if (this.userDevices.length === 0) {
         Column() {
-          Text('\u5C1A\u672A\u6DFB\u52A0\u8BBE\u5907')
+          Text($r('app.string.no_device_added'))
             .fontSize(18)
-            .fontColor('#757575')
+            .fontColor($r('app.color.icon_off'))
             .margin({ bottom: 12 })
-          Text('\u524D\u5F80\u8BBE\u7F6E\u6DFB\u52A0\u8BBE\u5907')
+          Text($r('app.string.go_settings_add'))
             .fontSize(14)
-            .fontColor('#1976D2')
+            .fontColor($r('app.color.brand_primary'))
             .onClick(() => {
               this.goSettings();
             })
@@ -285,15 +284,19 @@ struct Index {
           Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Start, alignItems: ItemAlign.Start }) {
             ForEach(this.userDevices, (ud: UserDevice) => {
               Column() {
-                Text(getIconText(ud.icon))
-                  .fontSize(40)
-                  .fontColor(this.getIconColor(ud))
-                  .margin({ top: 12, bottom: 6 })
+                Column() {
+                  Text(getIconText(ud.icon))
+                    .fontSize(40)
+                    .fontColor(this.getIconColor(ud))
+                }
+                .height(60)
+                .justifyContent(FlexAlign.Center)
+                .margin({ top: 12, bottom: 6 })
 
                 Text(this.getDisplayName(ud))
                   .fontSize(15)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor('#333333')
+                  .fontColor($r('app.color.text_primary'))
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                   .width('80%')
@@ -302,7 +305,7 @@ struct Index {
                 if (this.showDetail && UserDevice.getSourceInfo(ud).length > 0) {
                   Text(UserDevice.getSourceInfo(ud))
                     .fontSize(12)
-                    .fontColor('#999999')
+                    .fontColor($r('app.color.text_secondary'))
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                     .width('85%')
@@ -312,13 +315,14 @@ struct Index {
 
                 Text(this.getDeviceStatusText(ud))
                   .fontSize(13)
-                  .fontColor(this.isDeviceOffline(ud) ? '#E57373' : (this.isDeviceOn(ud) ? '#4CAF50' : '#9E9E9E'))
+                  .fontColor(this.isDeviceOffline(ud) ? $r('app.color.offline_red') :
+                    (this.isDeviceOn(ud) ? $r('app.color.status_on') : $r('app.color.status_off')))
                   .margin({ top: 4 })
 
                 if (this.showDetail && UserDevice.getHomeRoomText(ud).length > 0) {
                   Text(UserDevice.getHomeRoomText(ud))
                     .fontSize(11)
-                    .fontColor('#AAAAAA')
+                    .fontColor($r('app.color.text_tertiary'))
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                     .width('85%')
@@ -351,6 +355,6 @@ struct Index {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#FAFAFA')
+    .backgroundColor($r('app.color.page_bg'))
   }
 }

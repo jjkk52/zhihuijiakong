@@ -9,6 +9,13 @@ const USER_DEVICES_KEY = 'user_devices';
 
 export class PreferencesUtil {
   private static pref: preferences.Preferences | null = null;
+  // 默认强制重读（卡片进程等对跨进程一致性敏感的场景）。
+  // 主进程在 Ability 启动时调用 setForceReload(false) 以利用内存缓存。
+  private static forceReload: boolean = true;
+
+  static setForceReload(enabled: boolean): void {
+    PreferencesUtil.forceReload = enabled;
+  }
 
   private static getAppContext(): common.Context {
     const ctx = GlobalContext.getContext();
@@ -20,10 +27,16 @@ export class PreferencesUtil {
   }
 
   private static async getPref(): Promise<preferences.Preferences> {
-    // 主应用与卡片是两个独立进程，内存缓存不共享。
-    // 每次先移出缓存强制重读持久化文件，确保跨进程读取到最新数据。
+    // 卡片与主应用是两个独立进程，内存缓存不共享。
+    // forceReload 模式下每次先移出缓存强制重读持久化文件，确保跨进程读取到最新数据；
+    // 非 forceReload 模式（主进程）复用内存缓存，避免每次访问的磁盘 IO 开销。
+    if (!PreferencesUtil.forceReload && PreferencesUtil.pref !== null) {
+      return PreferencesUtil.pref;
+    }
     const appCtx = PreferencesUtil.getAppContext();
-    preferences.removePreferencesFromCacheSync(appCtx, PREFERENCE_NAME);
+    if (PreferencesUtil.forceReload) {
+      preferences.removePreferencesFromCacheSync(appCtx, PREFERENCE_NAME);
+    }
     PreferencesUtil.pref = await preferences.getPreferences(appCtx, PREFERENCE_NAME);
     if (!PreferencesUtil.pref) {
       throw new Error('Preferences not initialized');

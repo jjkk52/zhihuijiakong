@@ -4,6 +4,7 @@ import { MiHttpTransport } from './MiHttpTransport';
 import { MiTokenStore } from './MiTokenStore';
 import { MiToken, MiOtpState, MiOtpMethod, MiHttpResp, protectBigNumbers } from './types';
 import { MiDebug } from './MiDebug';
+import { LoginCooldown } from './LoginCooldown';
 
 const DOMAIN = 0x0200;
 const TAG = 'MiAccount';
@@ -13,8 +14,10 @@ const SID = 'xiaomiio';
 const JSON_PREFIX = '&&&START&&&';
 const SERVICE_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
 const RATE_LIMIT_CODE = 70022;
+const LOGIN_RETRY_MAX = 5;
+const LOGIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const UA_LOGIN = 'APP/com.xiaomi.mihome APPV/11.3.203 iosPassportSDK/4.2.50 iOS/26.3.1 MK/aVBob25lMTcsMg== DEVT/aVBob25l DEVS/aU9T BRA/QXBwbGU= L/zh_CN';
-const UA_OTP = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 iOS/26.3.1 MiHome/11.3.203 iPhone/iPhone17,2 DeviceId/D84D9205859533D504042022029B988E6F7DD180 UserId/8816080 APP/com.xiaomi.mihome APPV/11.3.203 Platform/iPhone Region/CN /xiaomi/miuibrowser/4.3/smartHome/ios/iPhone17,2/11.3.203 APP/com.xiaomi.mihome APPV/11.3.203 iosPassportSDK/4.2.50 iOS/26.3.1 MK/aVBob25lMTcsMg== DEVT/aVBob25l DEVS/aU9T BRA/QXBwbGU= L/zh_CN';
+const UA_OTP_TEMPLATE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 iOS/26.3.1 MiHome/11.3.203 iPhone/iPhone17,2 DeviceId/%DEVICEID% APP/com.xiaomi.mihome APPV/11.3.203 Platform/iPhone Region/CN /xiaomi/miuibrowser/4.3/smartHome/ios/iPhone17,2/11.3.203 APP/com.xiaomi.mihome APPV/11.3.203 iosPassportSDK/4.2.50 iOS/26.3.1 MK/aVBob25lMTcsMg== DEVT/aVBob25l DEVS/aU9T BRA/QXBwbGU= L/zh_CN';
 
 class ServiceLoginData {
   _json: string = '';
@@ -34,6 +37,7 @@ export class MiAccount {
   private token: MiToken | null = null;
   private pendingOtp: MiOtpState | null = null;
   private deviceId: string = '';
+  private loginCooldown: LoginCooldown = new LoginCooldown(LOGIN_RETRY_MAX, LOGIN_COOLDOWN_MS);
 
   constructor(username: string, password: string, tokenStore: MiTokenStore) {
     this.username = username;
@@ -99,6 +103,14 @@ export class MiAccount {
     return Date.now() >= expireTime;
   }
 
+  private recordRateLimitFailure(tips: string): void {
+    this.loginCooldown.recordFailure(Date.now());
+    hilog.warn(DOMAIN, TAG, 'rate limited failures=%{public}d cooldownHours=%{public}d tips=%{public}s',
+      this.loginCooldown.getFailures(), this.loginCooldown.remainingHours(Date.now()), tips);
+    MiDebug.log('Account', 'rate limited failures=' + String(this.loginCooldown.getFailures()) + ' tips=' + tips);
+    throw new Error('\u767B\u5F55\u8BF7\u6C42\u88AB\u9650\u6D41: ' + tips);
+  }
+
   async refreshToken(sid: string): Promise<boolean> {
     if (this.token === null) {
       return false;
@@ -109,13 +121,12 @@ export class MiAccount {
     MiDebug.log('Account', 'refreshToken start userId=' + old.userId);
     this.transport.clearCookies();
     try {
+      this.loginCooldown.check(Date.now());
       const resp = await this.serviceLogin('serviceLogin?sid=' + sid + '&_json=true', null);
       if (resp['code'] !== 0) {
         const code = Number(resp['code']);
         if (code === RATE_LIMIT_CODE) {
-          hilog.warn(DOMAIN, TAG, 'refreshToken rate limited, keep token for retry');
-          MiDebug.log('Account', 'refreshToken rate limited code=' + String(code));
-          return false;
+          this.recordRateLimitFailure(String(resp['tips'] ?? ''));
         }
         hilog.warn(DOMAIN, TAG, 'refreshToken rejected, require relogin code=%{public}s', String(resp['code']));
         MiDebug.log('Account', 'refreshToken rejected code=' + String(resp['code']));
@@ -156,12 +167,16 @@ export class MiAccount {
   }
 
   async login(sid: string): Promise<MiToken> {
+    this.loginCooldown.check(Date.now());
     hilog.info(DOMAIN, TAG, 'login start');
     MiDebug.log('Account', 'login start');
     this.deviceId = CryptoUtil.randomAlphanumeric(16).toUpperCase();
     MiDebug.log('Account', 'deviceId=' + this.deviceId);
     let resp = await this.serviceLogin('serviceLogin?sid=' + sid + '&_json=true', null);
     if (resp['code'] !== 0) {
+      if (Number(resp['code']) === RATE_LIMIT_CODE) {
+        this.recordRateLimitFailure(String(resp['tips'] ?? ''));
+      }
       const hash = await CryptoUtil.md5HexUpper(this.password);
       const data = new ServiceLoginData();
       data._json = 'true';
@@ -180,21 +195,21 @@ export class MiAccount {
         hilog.info(DOMAIN, TAG, 'OTP required, notificationUrl=%{public}s', String(resp['notificationUrl']).substring(0, 80));
         const ntfUrl = String(resp['notificationUrl']);
         const fullNtfUrl = ntfUrl.startsWith('http') ? ntfUrl : ACCOUNT_BASE + ntfUrl;
-        await this.transport.request(fullNtfUrl, 'GET', null, { 'User-Agent': UA_OTP }, { 'deviceId': this.deviceId });
+        await this.transport.request(fullNtfUrl, 'GET', null, { 'User-Agent': this.buildOtpUa() }, { 'deviceId': this.deviceId });
         const ntfParams = this.parseUrlQuery(fullNtfUrl);
         const ctx = ntfParams['context'] ?? '';
         const idataUrl = ACCOUNT_BASE + '/identity/list?sid=' + sid + '&supportedMask=0&_locale=zh_CN&context=' + encodeURIComponent(ctx);
-        const idataResp = await this.transport.request(idataUrl, 'GET', null, { 'User-Agent': UA_OTP }, { 'deviceId': this.deviceId });
+        const idataResp = await this.transport.request(idataUrl, 'GET', null, { 'User-Agent': this.buildOtpUa() }, { 'deviceId': this.deviceId });
         const idata = this.parseLoginResp(idataResp);
         const flag = (idata['flag'] as number) ?? 4;
         const otpMethod = flag === 8 ? MiOtpMethod.Email : MiOtpMethod.Phone;
         hilog.info(DOMAIN, TAG, 'OTP method=%{public}s flag=%{public}d', String(otpMethod), flag);
         const triggerUrl = ACCOUNT_BASE + '/identity/auth/verify' + (otpMethod === MiOtpMethod.Email ? 'Email' : 'Phone') + '?_flag=' + flag + '&_json=true';
-        await this.transport.request(triggerUrl, 'GET', null, { 'User-Agent': UA_OTP }, { 'deviceId': this.deviceId });
+        await this.transport.request(triggerUrl, 'GET', null, { 'User-Agent': this.buildOtpUa() }, { 'deviceId': this.deviceId });
         if (otpMethod === MiOtpMethod.Phone) {
           const sendUrl = ACCOUNT_BASE + '/identity/auth/sendPhoneTicket';
           const sendData = 'retry=0&icode=&_json=true';
-          const sendResp = await this.transport.request(sendUrl, 'POST', sendData, { 'User-Agent': UA_OTP, 'Content-Type': 'application/x-www-form-urlencoded' }, { 'deviceId': this.deviceId });
+          const sendResp = await this.transport.request(sendUrl, 'POST', sendData, { 'User-Agent': this.buildOtpUa(), 'Content-Type': 'application/x-www-form-urlencoded' }, { 'deviceId': this.deviceId });
           const sendJson = this.parseLoginResp(sendResp);
           const sendCode = (sendJson['code'] as number) ?? -1;
           if (sendCode !== 0 && sendCode !== null) {
@@ -254,7 +269,7 @@ export class MiAccount {
     const dc = Date.now();
     const verifyUrl = ACCOUNT_BASE + '/identity/auth/verify' + otpMethodStr + '?_dc=' + dc;
     const verifyData = '_flag=' + flag + '&ticket=' + encodeURIComponent(otp) + '&trust=false&_json=true';
-    const verifyResp = await this.transport.request(verifyUrl, 'POST', verifyData, { 'User-Agent': UA_OTP, 'Content-Type': 'application/x-www-form-urlencoded' }, { 'deviceId': deviceId });
+    const verifyResp = await this.transport.request(verifyUrl, 'POST', verifyData, { 'User-Agent': this.buildOtpUa(), 'Content-Type': 'application/x-www-form-urlencoded' }, { 'deviceId': deviceId });
     const vresp = this.parseLoginResp(verifyResp);
     hilog.info(DOMAIN, TAG, 'verifyOtp code=%{public}s location=%{public}s', String(vresp['code'] ?? ''), String(vresp['location'] ?? '').substring(0, 80));
     const vLocation = vresp['location'];
@@ -267,7 +282,7 @@ export class MiAccount {
     if (!location.startsWith('http')) {
       location = ACCOUNT_BASE + location;
     }
-    await this.transport.request(location, 'GET', null, { 'User-Agent': UA_OTP }, { 'deviceId': deviceId });
+    await this.transport.request(location, 'GET', null, { 'User-Agent': this.buildOtpUa() }, { 'deviceId': deviceId });
     const resp = await this.serviceLogin('serviceLogin?sid=' + sid + '&_json=true', null);
     if (resp['code'] !== 0) {
       throw new Error('OTP\u9A8C\u8BC1\u540E\u767B\u5F55\u5931\u8D25: ' + JSON.stringify(resp));
@@ -301,11 +316,11 @@ export class MiAccount {
     const otpMethodStr = this.pendingOtp.method === MiOtpMethod.Email ? 'Email' : 'Phone';
     const flag = this.pendingOtp.flag;
     const triggerUrl = ACCOUNT_BASE + '/identity/auth/verify' + otpMethodStr + '?_flag=' + flag + '&_json=true';
-    await this.transport.request(triggerUrl, 'GET', null, { 'User-Agent': UA_OTP }, { 'deviceId': this.pendingOtp.deviceId });
+    await this.transport.request(triggerUrl, 'GET', null, { 'User-Agent': this.buildOtpUa() }, { 'deviceId': this.pendingOtp.deviceId });
     if (this.pendingOtp.method === MiOtpMethod.Phone) {
       const sendUrl = ACCOUNT_BASE + '/identity/auth/sendPhoneTicket';
       const sendData = 'retry=0&icode=&_json=true';
-      const sendResp = await this.transport.request(sendUrl, 'POST', sendData, { 'User-Agent': UA_OTP, 'Content-Type': 'application/x-www-form-urlencoded' }, { 'deviceId': this.pendingOtp.deviceId });
+      const sendResp = await this.transport.request(sendUrl, 'POST', sendData, { 'User-Agent': this.buildOtpUa(), 'Content-Type': 'application/x-www-form-urlencoded' }, { 'deviceId': this.pendingOtp.deviceId });
       const sendJson = this.parseLoginResp(sendResp);
       const sendCode = (sendJson['code'] as number) ?? -1;
       if (sendCode !== 0 && sendCode !== null) {
@@ -373,8 +388,17 @@ export class MiAccount {
         return String(body['token']);
       }
     } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'securityTokenService parse body error: %{public}s', String(e));
     }
     throw new Error('\u65E0\u6CD5\u83B7\u53D6serviceToken');
+  }
+
+  private buildOtpUa(): string {
+    let deviceId = this.deviceId;
+    if (deviceId.length === 0 && this.pendingOtp !== null) {
+      deviceId = this.pendingOtp.deviceId;
+    }
+    return UA_OTP_TEMPLATE.replace('%DEVICEID%', deviceId);
   }
 
   private parseLoginResp(resp: MiHttpResp): Record<string, Object> {

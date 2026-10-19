@@ -3,6 +3,7 @@ import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { MiHttpResp } from './types';
 import { MiDebug } from './MiDebug';
+import { CookieParser } from './CookieParser';
 
 const DOMAIN = 0x0200;
 const TAG = 'MiHttpTransport';
@@ -66,6 +67,7 @@ export class MiHttpTransport {
             }
           }
         } catch (e) {
+          hilog.warn(DOMAIN, TAG, 'headersReceive parse set-cookie error: %{public}s', String(e));
         }
       });
       httpRequestObj.request(url, options, (err: Error, response: http.HttpResponse) => {
@@ -116,26 +118,13 @@ export class MiHttpTransport {
 
   private saveCookiesFromSetCookieString(setCookieStr: string): void {
     try {
-      const rawParts = setCookieStr.split(',');
-      for (let j = 0; j < rawParts.length; j++) {
-        const part = rawParts[j].trim();
-        if (part.length === 0) {
-          continue;
-        }
-        const segs = part.split(';');
-        if (segs.length > 0) {
-          const kv = segs[0].trim();
-          const eq = kv.indexOf('=');
-          if (eq > 0) {
-            const cookieKey = kv.substring(0, eq).trim();
-            if (cookieKey.length > 0 && cookieKey.toLowerCase() !== 'path' && cookieKey.toLowerCase() !== 'domain' && cookieKey.toLowerCase() !== 'expires' && cookieKey.toLowerCase() !== 'max-age' && cookieKey.toLowerCase() !== 'httponly' && cookieKey.toLowerCase() !== 'secure' && cookieKey.toLowerCase() !== 'samesite') {
-              const value = kv.substring(eq + 1).trim();
-              this.cookieJar[cookieKey] = value;
-            }
-          }
-        }
+      const parsed = CookieParser.parseSetCookieString(setCookieStr);
+      const keys = Object.keys(parsed);
+      for (let i = 0; i < keys.length; i++) {
+        this.cookieJar[keys[i]] = parsed[keys[i]];
       }
     } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'saveCookiesFromSetCookieString error: %{public}s', String(e));
     }
   }
 
@@ -143,31 +132,8 @@ export class MiHttpTransport {
     try {
       const keys = Object.keys(headers);
       for (let i = 0; i < keys.length; i++) {
-        const key = keys[i].toLowerCase();
-        if (key === 'set-cookie') {
-          const setCookie = headers[keys[i]];
-          if (!setCookie) {
-            continue;
-          }
-          const rawParts = String(setCookie).split(',');
-          for (let j = 0; j < rawParts.length; j++) {
-            const part = rawParts[j].trim();
-            if (part.length === 0) {
-              continue;
-            }
-            const segs = part.split(';');
-            if (segs.length > 0) {
-              const kv = segs[0].trim();
-              const eq = kv.indexOf('=');
-              if (eq > 0) {
-                const cookieKey = kv.substring(0, eq).trim();
-                if (cookieKey.length > 0 && cookieKey.toLowerCase() !== 'path' && cookieKey.toLowerCase() !== 'domain' && cookieKey.toLowerCase() !== 'expires' && cookieKey.toLowerCase() !== 'max-age' && cookieKey.toLowerCase() !== 'httponly' && cookieKey.toLowerCase() !== 'secure' && cookieKey.toLowerCase() !== 'samesite') {
-                  const value = kv.substring(eq + 1).trim();
-                  this.cookieJar[cookieKey] = value;
-                }
-              }
-            }
-          }
+        if (keys[i].toLowerCase() === 'set-cookie') {
+          this.saveCookiesFromSetCookieString(headers[keys[i]]);
         }
       }
     } catch (e) {

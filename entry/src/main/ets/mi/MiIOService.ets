@@ -1,5 +1,4 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { http } from '@kit.NetworkKit';
 import { CryptoUtil } from './CryptoUtil';
 import { MiHttpTransport } from './MiHttpTransport';
 import { MiAccount } from './MiAccount';
@@ -12,24 +11,9 @@ const TAG = 'MiIOService';
 
 const API_BASE = 'https://api.io.mi.com/app';
 const SID_IO = 'xiaomiio';
-const UA_MIIO = 'iOS-14.4-6.0.103-iPhone12,3--D7744744F7AF32F0544445285880DD63E47D9BE9-8816080-84A3F44E137B71AE-iPhone';
 const JSON_PREFIX = '&&&START&&&';
 const SPEC_INSTANCES_URL = 'https://miot-spec.org/miot-spec-v2/instances?status=all';
 const SPEC_INSTANCE_URL_PREFIX = 'https://miot-spec.org/miot-spec-v2/instance?type=';
-
-class MiioGetParams {
-  getVirtualModel: boolean = true;
-  getHuamiDevices: number = 0;
-  accessKey: string = '';
-}
-
-class MiioGetHomeParams {
-  limit: number = 150;
-  fetch_share: boolean = true;
-  fetch_share_dev: boolean = true;
-  plat_form: number = 0;
-  app_ver: number = 9;
-}
 
 class MiioPropGetReq {
   params: MiioPropParam[] = [];
@@ -120,7 +104,7 @@ export class MiIOService {
     const signedData = await this.signData(uri, data, token.ssecurity);
     const body = this.buildFormDataFromRecord(signedData);
     const headers: Record<string, string> = {
-      'User-Agent': UA_MIIO,
+      'User-Agent': this.buildUaMiio(token),
       'x-xiaomi-protocal-flag-cli': 'PROTOCAL-HTTP2',
       'Content-Type': 'application/x-www-form-urlencoded'
     };
@@ -131,6 +115,10 @@ export class MiIOService {
     };
     const resp = await this.transport.request(url, 'POST', body, headers, cookies);
     return this.parseJsonResp(resp);
+  }
+
+  private buildUaMiio(token: MiToken): string {
+    return 'iOS-14.4-6.0.103-iPhone12,3--' + token.deviceId + '-' + token.userId + '-84A3F44E137B71AE-iPhone';
   }
 
   private isAuthError(respJson: MiioResponse): boolean {
@@ -164,9 +152,9 @@ export class MiIOService {
         list = list.concat(page);
       }
     } else {
-      const reqParams = new MiioGetParams();
-      reqParams.getVirtualModel = true;
-      reqParams.getHuamiDevices = 0;
+      const reqParams: Record<string, Object> = {} as Record<string, Object>;
+      reqParams['getVirtualModel'] = true;
+      reqParams['getHuamiDevices'] = 0;
       const result = await this.miioRequest('/home/device_list', reqParams) as Record<string, Object>;
       list = (result['list'] as Object[]) ?? [];
     }
@@ -227,7 +215,7 @@ export class MiIOService {
     if (this.homeListCache !== null && (now - this.homeListCacheTime) < 60000) {
       return this.homeListCache;
     }
-    const reqParams = new MiioGetHomeParams();
+    const reqParams: Record<string, Object> = this.buildGetHomeParams();
     const result = await this.miioRequest('/v2/homeroom/gethome', reqParams) as Record<string, Object>;
     const homelist = (result['homelist'] as Object[]) ?? [];
     const shareHomeList = (result['share_home_list'] as Object[]) ?? [];
@@ -300,7 +288,7 @@ export class MiIOService {
     if (this.shareHomeListCache !== null && (now - this.homeListCacheTime) < 60000) {
       shareHomeList = this.shareHomeListCache;
     } else {
-      const reqParams = new MiioGetHomeParams();
+      const reqParams: Record<string, Object> = this.buildGetHomeParams();
       const result = await this.miioRequest('/v2/homeroom/gethome', reqParams) as Record<string, Object>;
       shareHomeList = (result['share_home_list'] as Object[]) ?? [];
     }
@@ -376,30 +364,19 @@ export class MiIOService {
     hilog.info(DOMAIN, TAG, 'loadSpecInstances count=%{public}d', Object.keys(this.modelUrnMap).length);
   }
 
-  private httpGetJson(url: string): Promise<Record<string, Object>> {
-    return new Promise((resolve: (v: Record<string, Object>) => void, reject: (e: Error) => void) => {
-      const httpReq = http.createHttp();
-      const options: http.HttpRequestOptions = {
-        method: http.RequestMethod.GET,
-        expectDataType: http.HttpDataType.STRING,
-        connectTimeout: 15000,
-        readTimeout: 15000
-      };
-      httpReq.request(url, options, (err: Error, response: http.HttpResponse) => {
-        if (err) {
-          httpReq.destroy();
-          reject(err);
-        } else {
-          const result = response.result as string;
-          httpReq.destroy();
-          try {
-            resolve(JSON.parse(result) as Record<string, Object>);
-          } catch (e) {
-            reject(new Error('JSON parse failed'));
-          }
-        }
-      });
-    });
+  private buildGetHomeParams(): Record<string, Object> {
+    const params: Record<string, Object> = {} as Record<string, Object>;
+    params['limit'] = 150;
+    params['fetch_share'] = true;
+    params['fetch_share_dev'] = true;
+    params['plat_form'] = 0;
+    params['app_ver'] = 9;
+    return params;
+  }
+
+  private async httpGetJson(url: string): Promise<Record<string, Object>> {
+    const resp = await this.transport.request(url, 'GET', null, {} as Record<string, string>, {} as Record<string, string>);
+    return JSON.parse(protectBigNumbers(resp.result)) as Record<string, Object>;
   }
 
   async getProperty(did: string, siid: number, piid: number): Promise<number | boolean | string | null> {
@@ -417,6 +394,14 @@ export class MiIOService {
     return null;
   }
 
+  async getProperties(params: MiioPropParam[]): Promise<MiioResultItem[]> {
+    hilog.info(DOMAIN, TAG, 'getProperties count=%{public}d', params.length);
+    const req = new MiioPropGetReq();
+    req.params = params;
+    const result = await this.miioRequest('/miotspec/prop/get', req);
+    return result as MiioResultItem[];
+  }
+
   async setProperty(did: string, siid: number, piid: number, value: number | boolean | string): Promise<boolean> {
     hilog.info(DOMAIN, TAG, 'setProperty did=%{public}s siid=%{public}d piid=%{public}d value=%{public}s', did, siid, piid, String(value));
     const param: MiioPropParam = { did: did, siid: siid, piid: piid, value: value };
@@ -430,13 +415,14 @@ export class MiIOService {
     return false;
   }
 
-  async toggleSwitch(did: string, siid: number, piid: number): Promise<boolean> {
+  async toggleSwitch(did: string, siid: number, piid: number): Promise<boolean | null> {
     const currentValue = await this.getProperty(did, siid, piid);
     if (currentValue === null) {
-      throw new Error('\u65E0\u6CD5\u83B7\u53D6\u5F53\u524D\u72B6\u6001\uFF0C\u4E0D\u80FD\u7FFB\u8F6C');
+      throw new Error('无法获取当前状态，不能翻转');
     }
     const newValue = !currentValue;
-    return await this.setProperty(did, siid, piid, newValue);
+    const ok = await this.setProperty(did, siid, piid, newValue);
+    return ok ? newValue : null;
   }
 
   private async signData(uri: string, data: Object, ssecurity: string): Promise<Record<string, string>> {

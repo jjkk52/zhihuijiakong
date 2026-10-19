@@ -42,24 +42,24 @@ struct AddAliasDialog {
 
   build() {
     Column() {
-      Text('\u6DFB\u52A0\u8BBE\u5907')
+      Text($r('app.string.dialog_add_device'))
         .fontSize(18)
         .fontWeight(FontWeight.Bold)
         .margin({ bottom: 16 })
-      Text('\u8BBE\u5907: ' + this.deviceName)
+      Text($r('app.string.dialog_device_label', this.deviceName))
         .fontSize(14)
-        .fontColor('#666666')
+        .fontColor($r('app.color.text_hint'))
         .margin({ bottom: 4 })
       if (this.homeRoom.length > 0) {
-        Text('\u4F4D\u7F6E: ' + this.homeRoom)
+        Text($r('app.string.dialog_location_label', this.homeRoom))
           .fontSize(13)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_secondary'))
           .margin({ bottom: 12 })
       } else {
         Blank()
           .height(12)
       }
-      TextInput({ placeholder: '\u8F93\u5165\u5907\u6CE8\u540D\uFF08\u53EF\u7559\u7A7A\uFF09', text: this.alias })
+      TextInput({ placeholder: $r('app.string.alias_hint'), text: this.alias })
         .width('100%')
         .height(50)
         .onChange((value: string) => {
@@ -67,20 +67,20 @@ struct AddAliasDialog {
         })
         .margin({ bottom: 20 })
       Row() {
-        Button('\u53D6\u6D88')
+        Button($r('app.string.btn_cancel'))
           .width('45%')
           .height(44)
           .type(ButtonType.Capsule)
-          .backgroundColor('#EEEEEE')
-          .fontColor('#333333')
+          .backgroundColor($r('app.color.card_off_bg'))
+          .fontColor($r('app.color.text_primary'))
           .onClick(() => {
             this.controller.close();
           })
-        Button('\u786E\u8BA4')
+        Button($r('app.string.btn_confirm'))
           .width('45%')
           .height(44)
           .type(ButtonType.Capsule)
-          .backgroundColor('#1976D2')
+          .backgroundColor($r('app.color.brand_primary'))
           .fontColor(Color.White)
           .onClick(() => {
             this.onConfirm(this.alias);
@@ -104,7 +104,7 @@ struct SettingsPage {
   @State otp: string = '';
   @State needOtp: boolean = false;
   @State isLoggingIn: boolean = false;
-  @State loginError: string = '';
+  @State loginError: ResourceStr = '';
 
   @State allDevices: MiDevice[] = [];
   @State isLoadingDevices: boolean = false;
@@ -176,7 +176,7 @@ struct SettingsPage {
 
   async login(): Promise<void> {
     if (!this.phone || !this.password) {
-      this.loginError = '\u8BF7\u8F93\u5165\u624B\u673A\u53F7\u548C\u5BC6\u7801';
+      this.loginError = $r('app.string.login_error_empty');
       return;
     }
     this.isLoggingIn = true;
@@ -201,9 +201,9 @@ struct SettingsPage {
     } catch (error) {
       const errorMsg = String(error);
       hilog.error(DOMAIN, TAG, 'login error: %{public}s', errorMsg);
-      if (errorMsg.includes('\u9700\u8981\u77ED\u4FE1\u9A8C\u8BC1\u7801')) {
+      if (errorMsg.includes('需要短信验证码')) {
         this.needOtp = true;
-        this.loginError = '\u8BF7\u8F93\u5165\u77ED\u4FE1\u9A8C\u8BC1\u7801';
+        this.loginError = $r('app.string.login_error_need_otp');
         this.startOtpCountDown();
       } else {
         this.loginError = errorMsg;
@@ -240,7 +240,7 @@ struct SettingsPage {
       hilog.info(DOMAIN, TAG, 'loadDevices count=%{public}d', this.allDevices.length);
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'loadDevices error: %{public}s', String(error));
-      this.loginError = '\u83B7\u53D6\u8BBE\u5907\u5217\u8868\u5931\u8D25: ' + String(error);
+      this.loginError = $r('app.string.load_devices_failed', String(error));
     } finally {
       this.isLoadingDevices = false;
     }
@@ -336,17 +336,17 @@ struct SettingsPage {
 
   confirmRemove(slotKey: string, name: string): void {
     this.getUIContext().showAlertDialog({
-      title: '\u5220\u9664\u8BBE\u5907',
-      message: '\u786E\u5B9A\u5220\u9664\u300C' + name + '\u300D\u5417\uFF1F',
+      title: $r('app.string.remove_device_title'),
+      message: $r('app.string.remove_device_confirm', name),
       primaryButton: {
-        value: '\u5220\u9664',
-        fontColor: '#F44336',
+        value: $r('app.string.btn_delete'),
+        fontColor: $r('app.color.danger_red'),
         action: () => {
           this.removeDevice(slotKey);
         }
       },
       secondaryButton: {
-        value: '\u53D6\u6D88',
+        value: $r('app.string.btn_cancel'),
         action: () => {}
       }
     });
@@ -382,9 +382,9 @@ struct SettingsPage {
     try {
       await this.authService.resendOtp();
       this.startOtpCountDown();
-      this.loginError = '\u9A8C\u8BC1\u7801\u5DF2\u91CD\u65B0\u53D1\u9001';
+      this.loginError = $r('app.string.otp_resent');
     } catch (error) {
-      this.loginError = '\u91CD\u53D1\u9A8C\u8BC1\u7801\u5931\u8D25: ' + String(error);
+      this.loginError = $r('app.string.otp_resend_failed', String(error));
     }
   }
 
@@ -411,7 +411,7 @@ struct SettingsPage {
     Column() {
       Row() {
         Button({ type: ButtonType.Circle }) {
-          Text('\u2190')
+          Text('←')
             .fontSize(24)
             .fontColor(Color.White)
         }
@@ -421,17 +421,17 @@ struct SettingsPage {
         .onClick(() => {
           this.goBack();
         })
-        Text('\u8BBE\u7F6E')
+        Text($r('app.string.settings_title'))
           .fontSize(20)
           .fontColor(Color.White)
           .fontWeight(FontWeight.Bold)
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
         if (this.isLoggedIn) {
-          Button('\u9000\u51FA\u767B\u5F55')
+          Button($r('app.string.settings_logout'))
             .height(32)
             .type(ButtonType.Capsule)
-            .backgroundColor('#33FFFFFF')
+            .backgroundColor($r('app.color.header_btn_bg'))
             .fontColor(Color.White)
             .fontSize(13)
             .onClick(() => {
@@ -444,21 +444,21 @@ struct SettingsPage {
       }
       .width('100%')
       .height(56)
-      .backgroundColor('#1976D2')
+      .backgroundColor($r('app.color.brand_primary'))
       .padding({ left: 16, right: 16 })
 
       if (this.isLoggedIn) {
         Column() {
           Row() {
-            Text('\u5DF2\u767B\u5F55')
+            Text($r('app.string.logged_in_label'))
               .fontSize(15)
-              .fontColor('#333333')
+              .fontColor($r('app.color.text_primary'))
               .fontWeight(FontWeight.Medium)
             Blank()
             if (this.loginPhone.length > 0) {
               Text(this.loginPhone)
                 .fontSize(13)
-                .fontColor('#999999')
+                .fontColor($r('app.color.text_secondary'))
             }
           }
           .width('100%')
@@ -475,12 +475,12 @@ struct SettingsPage {
         Column() {
           if (!this.isLoggedIn) {
             Column() {
-              Text('\u7C73\u5BB6\u8D26\u53F7\u767B\u5F55')
+              Text($r('app.string.login_title'))
                 .fontSize(22)
                 .fontWeight(FontWeight.Bold)
                 .margin({ bottom: 24 })
 
-              TextInput({ placeholder: '\u624B\u673A\u53F7', text: this.phone })
+              TextInput({ placeholder: $r('app.string.phone_hint'), text: this.phone })
                 .width('100%')
                 .height(50)
                 .type(InputType.Number)
@@ -490,7 +490,7 @@ struct SettingsPage {
                 })
                 .margin({ bottom: 12 })
 
-              TextInput({ placeholder: '\u5BC6\u7801', text: this.password })
+              TextInput({ placeholder: $r('app.string.password_hint'), text: this.password })
                 .width('100%')
                 .height(50)
                 .type(InputType.Password)
@@ -501,7 +501,7 @@ struct SettingsPage {
 
               if (this.needOtp) {
                 Row() {
-                  TextInput({ placeholder: '\u77ED\u4FE1\u9A8C\u8BC1\u7801', text: this.otp })
+                  TextInput({ placeholder: $r('app.string.otp_hint'), text: this.otp })
                     .type(InputType.Number)
                     .maxLength(6)
                     .layoutWeight(1)
@@ -509,12 +509,12 @@ struct SettingsPage {
                     .onChange((value: string) => {
                       this.otp = value;
                     })
-                  Button(this.otpCountDown > 0 ? `${this.otpCountDown}s` : '\u83B7\u53D6\u9A8C\u8BC1\u7801')
+                  Button(this.otpCountDown > 0 ? `${this.otpCountDown}s` : $r('app.string.get_otp'))
                     .width(110)
                     .height(50)
                     .fontSize(14)
                     .type(ButtonType.Capsule)
-                    .backgroundColor(this.otpCountDown > 0 ? '#BBBBBB' : '#1976D2')
+                    .backgroundColor(this.otpCountDown > 0 ? $r('app.color.text_disabled') : $r('app.color.brand_primary'))
                     .fontColor(Color.White)
                     .enabled(this.otpCountDown <= 0)
                     .margin({ left: 8 })
@@ -526,19 +526,19 @@ struct SettingsPage {
                 .margin({ bottom: 12 })
               }
 
-              if (this.loginError.length > 0) {
+              if (this.loginError !== '') {
                 Text(this.loginError)
                   .fontSize(14)
-                  .fontColor('#F44336')
+                  .fontColor($r('app.color.danger_red'))
                   .width('100%')
                   .margin({ bottom: 12 })
               }
 
-              Button(this.isLoggingIn ? '\u767B\u5F55\u4E2D...' : '\u767B\u5F55')
+              Button(this.isLoggingIn ? $r('app.string.logging_in') : $r('app.string.login_button'))
                 .width('100%')
                 .height(50)
                 .type(ButtonType.Capsule)
-                .backgroundColor('#1976D2')
+                .backgroundColor($r('app.color.brand_primary'))
                 .fontColor(Color.White)
                 .enabled(!this.isLoggingIn)
                 .onClick(() => {
@@ -553,14 +553,14 @@ struct SettingsPage {
           } else {
             Column() {
               Row() {
-                Text('\u6211\u7684\u8BBE\u5907')
+                Text($r('app.string.my_devices'))
                   .fontSize(17)
                   .fontWeight(FontWeight.Bold)
                   .layoutWeight(1)
-                Button(this.isLoadingDevices ? '\u52A0\u8F7D\u4E2D...' : '+ \u6DFB\u52A0')
+                Button(this.isLoadingDevices ? $r('app.string.loading') : $r('app.string.btn_add'))
                   .height(32)
                   .type(ButtonType.Capsule)
-                  .backgroundColor('#1976D2')
+                  .backgroundColor($r('app.color.brand_primary'))
                   .fontColor(Color.White)
                   .fontSize(13)
                   .enabled(!this.isLoadingDevices)
@@ -572,9 +572,9 @@ struct SettingsPage {
               .margin({ bottom: 12 })
 
               if (this.userDevices.length === 0) {
-                Text('\u5C1A\u672A\u6DFB\u52A0\u8BBE\u5907')
+                Text($r('app.string.no_device_added'))
                   .fontSize(14)
-                  .fontColor('#999999')
+                  .fontColor($r('app.color.text_secondary'))
                   .width('100%')
                   .textAlign(TextAlign.Center)
                   .padding({ top: 12, bottom: 12 })
@@ -594,7 +594,7 @@ struct SettingsPage {
                             .textOverflow({ overflow: TextOverflow.Ellipsis })
                           Text(ud.name)
                             .fontSize(12)
-                            .fontColor('#999999')
+                            .fontColor($r('app.color.text_secondary'))
                             .margin({ top: 1 })
                         } else {
                           Text(this.getDeviceDisplayName(ud))
@@ -606,11 +606,11 @@ struct SettingsPage {
                         Row() {
                           Text(ud.model)
                             .fontSize(11)
-                            .fontColor('#BBBBBB')
+                            .fontColor($r('app.color.text_disabled'))
                           if (UserDevice.getHomeRoomText(ud).length > 0) {
                             Text(' · ' + UserDevice.getHomeRoomText(ud))
                               .fontSize(11)
-                              .fontColor('#BBBBBB')
+                              .fontColor($r('app.color.text_disabled'))
                               .maxLines(1)
                               .textOverflow({ overflow: TextOverflow.Ellipsis })
                               .constraintSize({ maxWidth: 180 })
@@ -622,20 +622,20 @@ struct SettingsPage {
                       .alignItems(HorizontalAlign.Start)
                       .layoutWeight(1)
                        if (this.editingSlotKey === UserDevice.getSlotKey(ud)) {
-                         Button('\u53D6\u6D88')
+                         Button($r('app.string.btn_cancel'))
                            .height(28)
                            .type(ButtonType.Capsule)
-                           .backgroundColor('#999999')
+                           .backgroundColor($r('app.color.text_secondary'))
                            .fontColor(Color.White)
                            .fontSize(12)
                            .margin({ right: 6 })
                            .onClick(() => {
                              this.cancelEdit();
                            })
-                         Button('\u4FDD\u5B58')
+                         Button($r('app.string.btn_save'))
                            .height(28)
                            .type(ButtonType.Capsule)
-                           .backgroundColor('#4CAF50')
+                           .backgroundColor($r('app.color.status_on'))
                            .fontColor(Color.White)
                            .fontSize(12)
                            .margin({ right: 6 })
@@ -643,10 +643,10 @@ struct SettingsPage {
                              this.saveEdit();
                            })
                        } else {
-                         Button('\u7F16\u8F91')
+                         Button($r('app.string.btn_edit'))
                            .height(28)
                            .type(ButtonType.Capsule)
-                           .backgroundColor('#1976D2')
+                           .backgroundColor($r('app.color.brand_primary'))
                            .fontColor(Color.White)
                            .fontSize(12)
                            .margin({ right: 6 })
@@ -654,10 +654,10 @@ struct SettingsPage {
                              this.startEdit(ud);
                            })
                        }
-                        Button('\u5220\u9664')
+                        Button($r('app.string.btn_delete'))
                           .height(28)
                           .type(ButtonType.Capsule)
-                          .backgroundColor('#F44336')
+                          .backgroundColor($r('app.color.danger_red'))
                           .fontColor(Color.White)
                           .fontSize(12)
                           .onClick(() => {
@@ -670,9 +670,9 @@ struct SettingsPage {
 
                     if (this.editingSlotKey === UserDevice.getSlotKey(ud)) {
                       Column() {
-                        Text('\u9009\u62E9\u56FE\u6807')
+                        Text($r('app.string.choose_icon'))
                           .fontSize(14)
-                          .fontColor('#666666')
+                          .fontColor($r('app.color.text_hint'))
                           .width('100%')
                           .margin({ bottom: 8 })
                         Grid() {
@@ -686,8 +686,11 @@ struct SettingsPage {
                               .height('100%')
                               .aspectRatio(1)
                               .borderRadius(8)
-                              .border(this.editingIcon === icon ? { width: 2, color: '#1976D2' } : { width: 1, color: '#DDDDDD' })
-                              .backgroundColor(this.editingIcon === icon ? '#E3F2FD' : '#F5F5F5')
+                              .border(this.editingIcon === icon ?
+                                { width: 2, color: $r('app.color.brand_primary') } :
+                                { width: 1, color: $r('app.color.border_light') })
+                              .backgroundColor(this.editingIcon === icon ?
+                                $r('app.color.selected_bg') : $r('app.color.unbound_bg'))
                               .justifyContent(FlexAlign.Center)
                               .alignItems(HorizontalAlign.Center)
                               .onClick(() => {
@@ -702,7 +705,7 @@ struct SettingsPage {
                         .width('100%')
                         .height(236)
                         .margin({ bottom: 12 })
-                        TextInput({ placeholder: '\u8F93\u5165\u5907\u6CE8\u540D\uFF08\u53EF\u7559\u7A7A\uFF09', text: this.editingAlias, controller: this.editingAliasController })
+                        TextInput({ placeholder: $r('app.string.alias_hint'), text: this.editingAlias, controller: this.editingAliasController })
                           .width('100%')
                           .height(44)
                           .onChange((value: string) => {
@@ -711,7 +714,7 @@ struct SettingsPage {
                       }
                       .width('100%')
                       .padding({ left: 16, right: 16, top: 8, bottom: 12 })
-                      .backgroundColor('#F8F8F8')
+                      .backgroundColor($r('app.color.edit_panel_bg'))
                     }
                   }
                   .width('100%')
@@ -726,7 +729,7 @@ struct SettingsPage {
 
             if (this.showDeviceList) {
               Column() {
-                TextInput({ placeholder: '\u641C\u7D22\u8BBE\u5907\u540D\u79F0\u6216\u578B\u53F7...', text: this.searchText })
+                TextInput({ placeholder: $r('app.string.search_hint'), text: this.searchText })
                   .width('100%')
                   .height(44)
                   .fontSize(14)
@@ -735,9 +738,9 @@ struct SettingsPage {
                     this.searchText = value;
                   })
 
-                Text(`\u5171 ${this.getFilteredDevices().length} \u4E2A\u8BBE\u5907`)
+                Text($r('app.string.device_count', this.getFilteredDevices().length))
                   .fontSize(12)
-                  .fontColor('#999999')
+                  .fontColor($r('app.color.text_secondary'))
                   .width('100%')
                   .margin({ bottom: 6 })
 
@@ -753,11 +756,11 @@ struct SettingsPage {
                         Row() {
                           Text(device.model)
                             .fontSize(12)
-                            .fontColor('#999999')
+                            .fontColor($r('app.color.text_secondary'))
                           if (getDeviceHomeRoomText(device.homeName, device.roomName).length > 0) {
                             Text(' · ' + getDeviceHomeRoomText(device.homeName, device.roomName))
                               .fontSize(12)
-                              .fontColor('#BBBBBB')
+                              .fontColor($r('app.color.text_disabled'))
                               .maxLines(1)
                               .textOverflow({ overflow: TextOverflow.Ellipsis })
                               .constraintSize({ maxWidth: 200 })
@@ -769,15 +772,15 @@ struct SettingsPage {
                       .alignItems(HorizontalAlign.Start)
                       .layoutWeight(1)
                       if (this.isDeviceAdded(device)) {
-                        Text('\u5DF2\u6DFB\u52A0')
+                        Text($r('app.string.already_added'))
                           .fontSize(13)
-                          .fontColor('#4CAF50')
+                          .fontColor($r('app.color.status_on'))
                           .margin({ right: 8 })
                       } else {
-                        Button('\u6DFB\u52A0')
+                        Button($r('app.string.btn_add'))
                           .height(32)
                           .type(ButtonType.Capsule)
-                          .backgroundColor('#1976D2')
+                          .backgroundColor($r('app.color.brand_primary'))
                           .fontColor(Color.White)
                           .fontSize(12)
                           .onClick(() => {
@@ -808,9 +811,9 @@ struct SettingsPage {
       .scrollBar(BarState.Auto)
 
       Row() {
-        Text('\u667a\u6167\u5bb6\u63a7 v' + (this.appVersion.length > 0 ? this.appVersion : '--'))
+        Text($r('app.string.version_footer', this.appVersion.length > 0 ? this.appVersion : '--'))
           .fontSize(12)
-          .fontColor('#AAAAAA')
+          .fontColor($r('app.color.text_tertiary'))
       }
       .width('100%')
       .height(34)
@@ -819,6 +822,6 @@ struct SettingsPage {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F0F0F0')
+    .backgroundColor($r('app.color.page_bg_alt'))
   }
 }

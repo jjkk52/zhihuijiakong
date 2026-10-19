@@ -42,8 +42,10 @@
         "runtimeOS": "HarmonyOS"
       },
       {
+        // 未签名发布：不配置 signingConfig，release 产品默认产出未签名包
+        // （entry-default-unsigned.hap）。如需正式签名发布，
+        // 请在 DevEco Studio 中配置发布证书后恢复 "signingConfig": "release"。
         "name": "release",
-        "signingConfig": "release",
         "compileSdkVersion": "6.1.1(24)",
         "compatibleSdkVersion": "6.1.0(23)",
         "targetSdkVersion": "6.1.1(24)",

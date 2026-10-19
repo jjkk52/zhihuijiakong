@@ -3,7 +3,7 @@ import { MiAccount } from '../mi/MiAccount';
 import { MiIOService } from '../mi/MiIOService';
 import { MiTokenStore } from '../mi/MiTokenStore';
 import { MiToken } from '../mi/types';
-import { PreferencesTokenStore } from './PreferencesTokenStore';
+import { AssetTokenStore } from './AssetTokenStore';
 
 const DOMAIN = 0x0200;
 const TAG = 'MiAuthService';
@@ -23,7 +23,7 @@ export class MiAuthService {
   }
 
   constructor() {
-    this.tokenStore = new PreferencesTokenStore();
+    this.tokenStore = new AssetTokenStore();
     this.account = new MiAccount('', '', this.tokenStore);
     this.ioService = new MiIOService(this.account);
   }

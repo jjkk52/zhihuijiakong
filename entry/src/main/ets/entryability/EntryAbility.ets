@@ -13,6 +13,7 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
     GlobalContext.initContext(this.context);
     MiDebug.init(this.context);
+    PreferencesUtil.setForceReload(false);
   }
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
