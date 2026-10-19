@@ -1,0 +1,36 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "智慧家控智能设备控制"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "控制智能家居设备"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "智慧家控"
+    },
+    {
+      "name": "permission_internet_reason",
+      "value": "访问设备云服务需要网络权限"
+    },
+    {
+      "name": "permission_network_info_reason",
+      "value": "检测网络状态需要获取网络信息权限"
+    },
+    {
+      "name": "ElevatorFormAbility_desc",
+      "value": "智能设备桌面卡片"
+    },
+    {
+      "name": "ElevatorFormAbility_label",
+      "value": "智慧家控卡片"
+    },
+    {
+      "name": "widget_desc",
+      "value": "显示设备状态，点击切换"
+    }
+  ]
+}

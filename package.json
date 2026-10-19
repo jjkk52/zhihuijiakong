@@ -1,0 +1,8 @@
+{
+  "name": "mijiadianti",
+  "version": "1.0.0",
+  "description": "HarmonyOS application",
+  "devDependencies": {
+    "@ohos/hvigor-ohos-plugin": "^6.24.4"
+  }
+}

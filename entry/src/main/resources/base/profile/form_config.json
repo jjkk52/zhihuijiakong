@@ -1,0 +1,23 @@
+{
+  "forms": [
+    {
+      "name": "switchWidget",
+      "displayName": "开关卡片",
+      "description": "显示设备状态，点击切换开关",
+      "src": "./ets/widget/pages/ElevatorWidget.ets",
+      "uiSyntax": "arkts",
+      "window": {
+        "designWidth": 720,
+        "autoDesignWidth": true
+      },
+      "isDefault": true,
+      "updateEnabled": true,
+      "scheduledUpdateTime": "10:30",
+      "updateDuration": 1,
+      "defaultDimension": "2*2",
+      "supportDimensions": ["1*2", "2*2", "2*4", "4*4"],
+      "formConfigAbility": "ability://WidgetEditAbility",
+      "isDynamic": true
+    }
+  ]
+}

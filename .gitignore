@@ -1,0 +1,41 @@
+/node_modules
+/oh_modules
+/local.properties
+/.idea
+**/build
+/.hvigor
+.cxx
+/.clangd
+/.clang-format
+/.clang-tidy
+**/.test
+/.appanalyzer
+
+# 签名材料与账号凭据（严禁上传）
+/sign/
+/MYpythonSourceCode/
+*.p12
+*.p7b
+*.cer
+*.csr
+keystore_password.txt
+.mi.token*
+
+# 构建产物与日志
+*.hap
+*.app
+*.log
+*_pid.txt
+
+# 截图（含应用界面，隐私考虑暂不入库）
+/screenshot.jpeg
+/screenshot_app.jpeg
+/screen_preview.jpeg
+
+# 个人批量安装脚本（含设备序列号，仅本地使用）
+/install_to_phones.bat
+/install_to_phones.ps1
+
+# 工具缓存
+/.cache/
+/.opencode/

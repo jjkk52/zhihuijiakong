@@ -1,0 +1,77 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\King\\.ohos\\config\\default_mijiadianti_uzap8K5Txzr9KLqjjxakG3XEp7JIjLs9fjMUDd6lYcQ=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BDA78FA42D1F0B3DD391C2EF7AD3AC1B44BB53AFDFB3769C4A8083633F3A9DE184ED5F76FA9C37E",
+          "profile": "C:\\Users\\King\\.ohos\\config\\default_mijiadianti_uzap8K5Txzr9KLqjjxakG3XEp7JIjLs9fjMUDd6lYcQ=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\King\\.ohos\\config\\default_mijiadianti_uzap8K5Txzr9KLqjjxakG3XEp7JIjLs9fjMUDd6lYcQ=.p12",
+          "storePassword": "0000001B1E93CA5197C0F91DEFA7E22D19D7874CCD27951694024C2DAB4B6624FA54BB439827DF060392A7"
+        }
+      },
+      {
+        // 发布签名已脱敏（防止证书密码与本机路径进入公开仓库）。
+        // 如需构建 release 包，请在 DevEco Studio 中通过
+        // File > Project Structure > Signing Configs 重新配置发布证书，
+        // 或参考 README.md「发布签名配置」章节手动填写 material 字段。
+        "name": "release",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "",
+          "storePassword": "",
+          "keyAlias": "release",
+          "keyPassword": "",
+          "signAlg": "SHA256withECDSA",
+          "profile": "",
+          "certpath": ""
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "compileSdkVersion": "6.1.1(24)",
+        "compatibleSdkVersion": "6.1.0(23)",
+        "targetSdkVersion": "6.1.1(24)",
+        "runtimeOS": "HarmonyOS"
+      },
+      {
+        "name": "release",
+        "signingConfig": "release",
+        "compileSdkVersion": "6.1.1(24)",
+        "compatibleSdkVersion": "6.1.0(23)",
+        "targetSdkVersion": "6.1.1(24)",
+        "runtimeOS": "HarmonyOS"
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug",
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default",
+            "release"
+          ]
+        }
+      ]
+    }
+  ]
+}

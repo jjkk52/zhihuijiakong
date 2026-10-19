@@ -1,0 +1,10 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "米家智能设备控制应用，支持设备发现、开关控制与桌面卡片。",
+  "main": "",
+  "author": "miio",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}
+
