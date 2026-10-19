@@ -35,7 +35,14 @@ After signing in with your Xiaomi account, you can manage Mi Home device switche
 
 ## Screenshots
 
-> Coming soon.
+| <img src="screenshots/home.png" width="270" alt="Home"> | <img src="screenshots/settings.png" width="270" alt="Settings"> |
+|:---:|:---:|
+| Home (device card wall) | Settings (login / device management) |
+
+<p>
+  <img src="screenshots/desktop.png" width="270" alt="Home-screen widgets">
+  <br>Home-screen widgets (1×2 / 2×2): tap to toggle devices without opening the app
+</p>
 
 ## Project Structure
 
@@ -134,7 +141,7 @@ This project is distributed as an **unsigned package**: the repository contains 
 2. Tap an unbound widget to open the device selection page and choose a device slot to bind
 3. Once bound, tapping the widget toggles the device directly — no need to open the app at any point; the widget color indicates the state:
    - Light green background = on; light gray = off; light red = device offline
-4. Widget states sync automatically every 5 minutes; after a tap, the real device state is polled immediately and the widget refreshed, ensuring what you see is what you control
+4. Widget states refresh automatically on a system schedule (roughly every 30 minutes); after a tap, the real device state is polled immediately and the widget refreshed, ensuring what you see is what you control
 5. Add multiple widgets bound to different devices (e.g. living-room light, elevator switch, water heater) to build your own home-screen control panel
 
 ## Security & Quality
