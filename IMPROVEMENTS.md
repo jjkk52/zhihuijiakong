@@ -182,3 +182,20 @@
 | P3-7 | 空壳测试 | ✅ `LocalUnit.test.ets` 补 CookieParser/UserDevice/getDeviceProfile 克隆隔离/protectBigNumbers 纯逻辑测试；`Ability.test.ets` 补 CryptoUtil 已知向量（MD5/SHA-1/SHA-256/RFC 4231 HMAC）与 Base64 等测试 |
 
 > 2026-10 追加：对照上游 [Yonsm/MiService](https://github.com/Yonsm/MiService) v3.0.2 与 [jjkk52/MiService](https://github.com/jjkk52/MiService) fork 复核协议层，确认「家庭成员账号设备列表修复」（fork commit `69881ce`：`/v2/homeroom/gethome` + `fetch_share`、`share_home_list` 合并、`/v2/home/device_list_page` 显式 dids 分批）此前已完整移植；补齐遗漏的**登录限流保护**（`MiAccount.ets`：`70022` 连续 5 次失败进入 2 小时冷却，冷却期内 `login()` / `refreshToken()` 不再发起登录请求，行为与上游 `miaccount.py` 对齐）。引用关系已在 [README.md](./README.md)「引用与致谢」声明。
+
+---
+
+## 五、点动模式（v1.0.3）
+
+针对电梯按钮、门禁等**点动开关**（点击后自动断开，而不是保持开启），新增按设备启用的点动模式：
+
+- **启用方式**：设置页 → 设备「编辑」→ 打开「点动模式」。未启用的设备保持原有自锁切换语义。
+- **执行过程**：点击卡片/主页设备 → 写入开启 → 设备自动关闭 → 卡片回到「已关闭」；若 5 秒内未自动关闭，App 补发关闭指令。
+- **动作沿保证**：若点击时设备仍为开启（上次未关闭），先写关闭归位，再写开启触发，避免重复写开启不产生新动作。
+- **状态文案**：点动过程使用「切换中...」，最终状态统一为「已开启 / 已关闭」，不引入额外状态词。
+- **并发与多按键**：表单级前置互斥（`processingForms`）避免快速连点重复触发；`switchingDevices` / `deviceStates` 改为 `slotKey` 粒度，双键/三键设备互不干扰。
+- **推送优化**：只更新绑定同一 `slotKey` 的卡片，并缓存卡片尺寸，减少轮询期间的重复查询与磁盘读写。
+
+涉及文件：`types.ets`、`MiDeviceService.ets`、`ElevatorFormAbility.ets`、`Index.ets`、`SettingsPage.ets`、`string.json`。
+
+兼容性：`UserDevice.momentary` 为新增字段，旧数据缺省按 `false` 处理，无需迁移。

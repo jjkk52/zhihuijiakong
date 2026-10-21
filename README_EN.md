@@ -20,13 +20,15 @@ After signing in with your Xiaomi account, you can manage Mi Home device switche
   - Search, add, and remove devices by name/model
   - Custom device nickname and icon (18 icons to choose from)
   - Multi-gang switch support (2-gang/3-gang switches are automatically split into independent control slots)
+  - Per-device "momentary mode": turns off automatically after a tap, suitable for elevator/door-access buttons
 - **State control**
   - Device switch states auto-refresh every 5 seconds
   - Real-time device offline indication
-  - Tap a card to toggle the switch, with polling to confirm the final state
+  - Normal devices toggle on tap; momentary devices turn off automatically, with a forced off command if they do not close within 5 seconds
 - **Home-screen widgets (core feature)**
   - 4 sizes: 1×2 / 2×2 / 2×4 / 4×4, blending natively with the system launcher
   - Toggle devices directly on the widget, without opening the app
+  - Normal devices use latching toggle; momentary devices turn off automatically after being triggered
   - Each widget binds to one device slot independently; multiple widgets can bind different devices
   - Unbound widgets guide you into the device selection page on tap — configure once, use forever
   - After each tap, the device state is polled in real time and the widget color reflects it (on/off/offline)
@@ -82,7 +84,7 @@ entry/src/main/ets/
 
 ## Download & Install
 
-- **Direct download**: get the unsigned HAP from [Releases](https://github.com/jjkk52/zhihuijiakong/releases) (`zhihuijiakong-v1.0.2-unsigned.hap`)
+- **Direct download**: get the unsigned HAP from [Releases](https://github.com/jjkk52/zhihuijiakong/releases) (`zhihuijiakong-v1.0.3-unsigned.hap`)
 - **Build from source**: clone this repository and build with DevEco Studio (see [Build & Run](#build--run))
 
 > ⚠️ This project is distributed as an **unsigned package**. An unsigned HAP **cannot be installed directly** on a device; debug signing is required first.
@@ -141,8 +143,16 @@ This project is distributed as an **unsigned package**: the repository contains 
 2. Tap an unbound widget to open the device selection page and choose a device slot to bind
 3. Once bound, tapping the widget toggles the device directly — no need to open the app at any point; the widget color indicates the state:
    - Light green background = on; light gray = off; light red = device offline
-4. Widget states refresh automatically on a system schedule (roughly every 30 minutes); after a tap, the real device state is polled immediately and the widget refreshed, ensuring what you see is what you control
-5. Add multiple widgets bound to different devices (e.g. living-room light, elevator switch, water heater) to build your own home-screen control panel
+4. For elevator/door-access momentary devices: open the device's "Edit" panel in Settings and enable "Momentary mode". Tapping the widget turns the device on; once the device closes automatically, the widget returns to "Off". If it does not close within 5 seconds, the app sends a forced off command
+5. Widget states refresh automatically on a system schedule (roughly every 30 minutes); after a tap, the real device state is polled immediately and the widget refreshed, ensuring what you see is what you control
+6. Add multiple widgets bound to different devices (e.g. living-room light, elevator switch, water heater) to build your own home-screen control panel
+
+## Changelog
+
+### v1.0.3
+- Added per-device "momentary mode": turns off automatically after a tap, with a forced off command if it does not close within 5 seconds
+- Unified widget and home-page status text to "On / Off"
+- Fixed duplicate triggering on rapid taps and cross-talk between multi-gang device states
 
 ## Security & Quality
 
