@@ -61,7 +61,18 @@ struct Index {
       this.isRefreshing = true;
     }
     try {
-      this.deviceStates = await this.deviceService.refreshDeviceStates(this.userDevices);
+      const refreshed = await this.deviceService.refreshDeviceStates(this.userDevices);
+      const merged: Record<string, boolean | undefined> = {} as Record<string, boolean | undefined>;
+      const keys = Object.keys(refreshed);
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        if (this.loadingDids[key] === true) {
+          merged[key] = this.deviceStates[key];
+        } else {
+          merged[key] = refreshed[key];
+        }
+      }
+      this.deviceStates = merged;
       hilog.info(DOMAIN, TAG, 'refreshStates done');
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'refreshStates error: %{public}s', String(error));
@@ -99,7 +110,12 @@ struct Index {
       return;
     }
     this.loadingDids[key] = true;
-    hilog.info(DOMAIN, TAG, 'onDeviceClick did=%{public}s siid=%{public}d piid=%{public}d', ud.did, ud.siid, ud.piid);
+    hilog.info(DOMAIN, TAG, 'onDeviceClick did=%{public}s siid=%{public}d piid=%{public}d momentary=%{public}s', ud.did, ud.siid, ud.piid, String(ud.momentary));
+
+    if (UserDevice.isMomentary(ud)) {
+      await this.runPulseFromPage(ud, key);
+      return;
+    }
 
     try {
       const newState = await this.deviceService.toggleSwitchByDid(ud.did, ud.siid, ud.piid);
@@ -127,6 +143,40 @@ struct Index {
         this.showToast($r('app.string.toast_control_failed'));
       }
     }
+  }
+
+  private async runPulseFromPage(ud: UserDevice, key: string): Promise<void> {
+    try {
+      const ok = await this.deviceService.pulseSwitchByDid(
+        ud.did,
+        ud.siid,
+        ud.piid,
+        (state: boolean | undefined) => {
+          if (state !== undefined) {
+            this.setDeviceState(key, state);
+          }
+        }
+      );
+      if (!ok) {
+        this.showToast($r('app.string.toast_control_failed'));
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, 'runPulseFromPage error: %{public}s', String(error));
+      this.showToast($r('app.string.toast_control_failed'));
+    } finally {
+      this.loadingDids[key] = false;
+      this.setDeviceState(key, this.deviceStates[key]);
+    }
+  }
+
+  private setDeviceState(key: string, state: boolean | undefined): void {
+    const newStates: Record<string, boolean | undefined> = {} as Record<string, boolean | undefined>;
+    const keys = Object.keys(this.deviceStates);
+    for (let i = 0; i < keys.length; i++) {
+      newStates[keys[i]] = this.deviceStates[keys[i]];
+    }
+    newStates[key] = state;
+    this.deviceStates = newStates;
   }
 
   private goSettings(): void {

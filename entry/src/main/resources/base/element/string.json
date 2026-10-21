@@ -189,6 +189,18 @@
       "value": "选择图标"
     },
     {
+      "name": "momentary_mode",
+      "value": "点动模式"
+    },
+    {
+      "name": "momentary_mode_desc",
+      "value": "点击后自动关闭，适用于电梯/门禁类按钮"
+    },
+    {
+      "name": "momentary_tag",
+      "value": "点动"
+    },
+    {
       "name": "search_hint",
       "value": "搜索设备名称或型号..."
     },

@@ -6,6 +6,8 @@ import { PreferencesUtil } from './PreferencesUtil';
 
 const DOMAIN = 0x0200;
 const TAG = 'MiDeviceService';
+const PULSE_MAX_WAIT_MS = 5000;
+const PULSE_POLL_INTERVAL_MS = 200;
 
 export class MiDeviceService {
   private static instance: MiDeviceService | null = null;
@@ -118,6 +120,7 @@ export class MiDeviceService {
               slotLabel: slot.label,
               homeName: devices[i].homeName ?? '',
               roomName: devices[i].roomName ?? '',
+              momentary: devices[i].momentary === true,
             };
             migratedDevices.push(ud);
           }
@@ -141,6 +144,7 @@ export class MiDeviceService {
       if (devices[i].roomName === undefined || devices[i].roomName === null) {
         devices[i].roomName = '';
       }
+      devices[i].momentary = devices[i].momentary === true;
     }
     const cleaned: UserDevice[] = [];
     let needClean = false;
@@ -203,7 +207,8 @@ export class MiDeviceService {
         slotKey: UserDevice.makeSlotKey(cd.did, profile.siid, profile.piid),
         slotLabel: profile.label,
         homeName: hr !== undefined ? hr.homeName : '',
-        roomName: hr !== undefined ? hr.roomName : ''
+        roomName: hr !== undefined ? hr.roomName : '',
+        momentary: false
       };
       result.push(ud);
     }
@@ -259,6 +264,7 @@ export class MiDeviceService {
           slotLabel: slot.label,
           homeName: homeName,
           roomName: roomName,
+          momentary: false
         };
         devices.push(ud);
         added = true;
@@ -331,12 +337,13 @@ export class MiDeviceService {
     return userDevices;
   }
 
-  async updateUserDevice(slotKey: string, alias: string, icon: number): Promise<boolean> {
+  async updateUserDevice(slotKey: string, alias: string, icon: number, momentary: boolean): Promise<boolean> {
     const devices = await PreferencesUtil.getUserDevices();
     for (let i = 0; i < devices.length; i++) {
       if (UserDevice.getSlotKey(devices[i]) === slotKey) {
         devices[i].alias = alias;
         devices[i].icon = icon;
+        devices[i].momentary = momentary;
         return await PreferencesUtil.saveUserDevices(devices);
       }
     }
@@ -429,6 +436,83 @@ export class MiDeviceService {
       hilog.warn(DOMAIN, TAG, 'toggleSwitchByDid failed did=%{public}s: %{public}s', did, String(error));
       return undefined;
     }
+  }
+
+  async setSwitchStateByDid(did: string, siid: number, piid: number, value: boolean): Promise<boolean> {
+    try {
+      return await this.getIOService().setProperty(did, siid, piid, value);
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'setSwitchStateByDid failed did=%{public}s value=%{public}s: %{public}s',
+        did, String(value), String(error));
+      return false;
+    }
+  }
+
+  private async readSwitchState(did: string, siid: number, piid: number): Promise<boolean | undefined> {
+    try {
+      const value = await this.getIOService().getProperty(did, siid, piid);
+      if (value === null) {
+        return undefined;
+      }
+      return value === true || value === 1;
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'readSwitchState failed did=%{public}s: %{public}s', did, String(error));
+      return undefined;
+    }
+  }
+
+  async pulseSwitchByDid(
+    did: string,
+    siid: number,
+    piid: number,
+    onState: (state: boolean | undefined) => void,
+    maxWaitMs: number = PULSE_MAX_WAIT_MS,
+    intervalMs: number = PULSE_POLL_INTERVAL_MS
+  ): Promise<boolean> {
+    const before = await this.readSwitchState(did, siid, piid);
+    if (before === true) {
+      await this.setSwitchStateByDid(did, siid, piid, false);
+      await MiDeviceService.sleep(intervalMs);
+    }
+
+    const actuated = await this.setSwitchStateByDid(did, siid, piid, true);
+    if (!actuated) {
+      onState(undefined);
+      return false;
+    }
+    onState(true);
+
+    let last: boolean | undefined = true;
+    const start = Date.now();
+    while (Date.now() - start < maxWaitMs) {
+      await MiDeviceService.sleep(intervalMs);
+      const state = await this.readSwitchState(did, siid, piid);
+      if (state !== undefined && state !== last) {
+        last = state;
+        onState(state);
+      }
+      if (state === false) {
+        hilog.info(DOMAIN, TAG, 'pulseSwitchByDid returned did=%{public}s elapsed=%{public}d', did, Date.now() - start);
+        return true;
+      }
+    }
+
+    hilog.warn(DOMAIN, TAG, 'pulseSwitchByDid auto-return timeout did=%{public}s, force reset', did);
+    const resetOk = await this.setSwitchStateByDid(did, siid, piid, false);
+    if (resetOk) {
+      onState(false);
+      return true;
+    }
+    onState(undefined);
+    return false;
+  }
+
+  private static sleep(ms: number): Promise<void> {
+    return new Promise<void>((resolve: () => void) => {
+      setTimeout(() => {
+        resolve();
+      }, ms);
+    });
   }
 
   pollSwitchState(

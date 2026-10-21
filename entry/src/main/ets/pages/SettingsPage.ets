@@ -121,6 +121,7 @@ struct SettingsPage {
   @State editingSlotKey: string = '';
   @State editingAlias: string = '';
   @State editingIcon: number = DeviceIcon.Generic;
+  @State editingMomentary: boolean = false;
   @State appVersion: string = '';
   private editingAliasController: TextInputController = new TextInputController();
 
@@ -302,6 +303,7 @@ struct SettingsPage {
     this.editingSlotKey = UserDevice.getSlotKey(ud);
     this.editingAlias = ud.alias;
     this.editingIcon = ud.icon;
+    this.editingMomentary = ud.momentary === true;
     this.editingAliasController = new TextInputController();
   }
 
@@ -309,19 +311,22 @@ struct SettingsPage {
     this.editingSlotKey = '';
     this.editingAlias = '';
     this.editingIcon = DeviceIcon.Generic;
+    this.editingMomentary = false;
   }
 
   async saveEdit(): Promise<void> {
     if (this.editingSlotKey.length === 0) {
       return;
     }
-    await this.deviceService.updateUserDevice(this.editingSlotKey, this.editingAlias, this.editingIcon);
+    await this.deviceService.updateUserDevice(this.editingSlotKey, this.editingAlias, this.editingIcon, this.editingMomentary);
     this.userDevices = await this.deviceService.getUserDevices();
     this.devicesVersion++;
-    hilog.info(DOMAIN, TAG, 'saveEdit slotKey=%{public}s alias=%{public}s icon=%{public}d', this.editingSlotKey, this.editingAlias, this.editingIcon);
+    hilog.info(DOMAIN, TAG, 'saveEdit slotKey=%{public}s alias=%{public}s icon=%{public}d momentary=%{public}s',
+      this.editingSlotKey, this.editingAlias, this.editingIcon, String(this.editingMomentary));
     this.editingSlotKey = '';
     this.editingAlias = '';
     this.editingIcon = DeviceIcon.Generic;
+    this.editingMomentary = false;
   }
 
   async removeDevice(slotKey: string): Promise<void> {
@@ -587,21 +592,49 @@ struct SettingsPage {
                         .margin({ right: 12 })
                       Column() {
                         if (ud.alias.length > 0) {
-                          Text(this.getDeviceDisplayName(ud))
-                            .fontSize(15)
-                            .fontWeight(FontWeight.Medium)
-                            .maxLines(1)
-                            .textOverflow({ overflow: TextOverflow.Ellipsis })
+                          Flex({ alignItems: ItemAlign.Center }) {
+                            Text(this.getDeviceDisplayName(ud))
+                              .fontSize(15)
+                              .fontWeight(FontWeight.Medium)
+                              .maxLines(1)
+                              .textOverflow({ overflow: TextOverflow.Ellipsis })
+                              .flexShrink(1)
+                            if (ud.momentary === true) {
+                              Text($r('app.string.momentary_tag'))
+                                .fontSize(10)
+                                .fontColor($r('app.color.brand_primary'))
+                                .border({ width: 1, color: $r('app.color.brand_primary') })
+                                .borderRadius(4)
+                                .padding({ left: 4, right: 4 })
+                                .margin({ left: 6 })
+                                .flexShrink(0)
+                            }
+                          }
+                          .width('100%')
                           Text(ud.name)
                             .fontSize(12)
                             .fontColor($r('app.color.text_secondary'))
                             .margin({ top: 1 })
                         } else {
-                          Text(this.getDeviceDisplayName(ud))
-                            .fontSize(15)
-                            .fontWeight(FontWeight.Medium)
-                            .maxLines(1)
-                            .textOverflow({ overflow: TextOverflow.Ellipsis })
+                          Flex({ alignItems: ItemAlign.Center }) {
+                            Text(this.getDeviceDisplayName(ud))
+                              .fontSize(15)
+                              .fontWeight(FontWeight.Medium)
+                              .maxLines(1)
+                              .textOverflow({ overflow: TextOverflow.Ellipsis })
+                              .flexShrink(1)
+                            if (ud.momentary === true) {
+                              Text($r('app.string.momentary_tag'))
+                                .fontSize(10)
+                                .fontColor($r('app.color.brand_primary'))
+                                .border({ width: 1, color: $r('app.color.brand_primary') })
+                                .borderRadius(4)
+                                .padding({ left: 4, right: 4 })
+                                .margin({ left: 6 })
+                                .flexShrink(0)
+                            }
+                          }
+                          .width('100%')
                         }
                         Row() {
                           Text(ud.model)
@@ -711,6 +744,30 @@ struct SettingsPage {
                           .onChange((value: string) => {
                             this.editingAlias = value;
                           })
+                        Row() {
+                          Column() {
+                            Text($r('app.string.momentary_mode'))
+                              .fontSize(14)
+                              .fontWeight(FontWeight.Medium)
+                              .fontColor($r('app.color.text_primary'))
+                              .width('100%')
+                            Text($r('app.string.momentary_mode_desc'))
+                              .fontSize(11)
+                              .fontColor($r('app.color.text_secondary'))
+                              .width('100%')
+                              .margin({ top: 2 })
+                          }
+                          .alignItems(HorizontalAlign.Start)
+                          .layoutWeight(1)
+
+                          Toggle({ type: ToggleType.Switch, isOn: this.editingMomentary })
+                            .onChange((isOn: boolean) => {
+                              this.editingMomentary = isOn;
+                            })
+                        }
+                        .width('100%')
+                        .margin({ top: 12 })
+                        .alignItems(VerticalAlign.Center)
                       }
                       .width('100%')
                       .padding({ left: 16, right: 16, top: 8, bottom: 12 })

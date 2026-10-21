@@ -106,9 +106,14 @@ export class UserDevice {
   slotLabel: string = '';
   homeName: string = '';
   roomName: string = '';
+  momentary: boolean = false;
 
   static makeSlotKey(did: string, siid: number, piid: number): string {
     return `${did}_${siid}_${piid}`;
+  }
+
+  static isMomentary(ud: UserDevice): boolean {
+    return ud.momentary === true;
   }
 
   static getSlotKey(ud: UserDevice): string {
