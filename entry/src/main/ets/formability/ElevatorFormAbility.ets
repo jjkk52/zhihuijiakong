@@ -7,6 +7,7 @@ import { PreferencesUtil } from '../mijia/PreferencesUtil';
 import { MiAuthService } from '../mijia/MiAuthService';
 import { MiDeviceService } from '../mijia/MiDeviceService';
 import { WidgetFormData, WidgetToggleMessage, UserDevice, DeviceIcon } from '../mi/types';
+import { isAuthError } from '../mi/MiErrors';
 import { StatusTexts } from '../common/StatusTexts';
 
 const DOMAIN = 0x0200;
@@ -19,6 +20,9 @@ export default class SwitchFormAbility extends FormExtensionAbility {
   private switchingDevices: Record<string, boolean> = {} as Record<string, boolean>;
   private deviceStates: Record<string, boolean | undefined> = {} as Record<string, boolean | undefined>;
   private dimensionCache: Record<string, string> = {} as Record<string, string>;
+  private pushSeq: number = 0;
+  private latestFormSeq: Record<string, number> = {} as Record<string, number>;
+  private formUpdateChains: Record<string, Promise<void>> = {} as Record<string, Promise<void>>;
 
   onAddForm(want: Want): formBindingData.FormBindingData {
     this.ensureContext();
@@ -59,6 +63,7 @@ export default class SwitchFormAbility extends FormExtensionAbility {
       hilog.info(DOMAIN, TAG, 'onUpdateForm skipped, form busy formId=%{public}s', formId);
       return;
     }
+    const seq = this.beginPush(formId);
     hilog.info(DOMAIN, TAG, 'onUpdateForm formId=%{public}s', formId);
     try {
       const data = await this.getWidgetFormData(formId);
@@ -67,7 +72,7 @@ export default class SwitchFormAbility extends FormExtensionAbility {
         data.statusText = StatusTexts.switching;
       }
       hilog.info(DOMAIN, TAG, 'onUpdateForm push did=%{public}s name=%{public}s dim=%{public}s status=%{public}s', data.did, data.deviceName, data.dimension, data.statusText);
-      await formProvider.updateForm(formId, formBindingData.createFormBindingData(data));
+      this.enqueueFormUpdate(formId, data, seq);
       this.scheduleNextRefresh(formId);
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'onUpdateForm error: %{public}s', String(e));
@@ -90,7 +95,11 @@ export default class SwitchFormAbility extends FormExtensionAbility {
         return;
       }
 
-      await MiAuthService.getInstance().checkLoginStatus();
+      const loggedIn = await MiAuthService.getInstance().checkLoginStatus();
+      if (!loggedIn) {
+        await this.pushStatusText(formId, StatusTexts.loginExpired);
+        return;
+      }
       const deviceService = MiDeviceService.getInstance();
 
       const slotKey = await this.getFormDevice(formId);
@@ -127,6 +136,9 @@ export default class SwitchFormAbility extends FormExtensionAbility {
       if (activeKey.length > 0) {
         this.switchingDevices[activeKey] = false;
       }
+      if (isAuthError(e)) {
+        await this.pushStatusText(formId, StatusTexts.loginExpired);
+      }
     } finally {
       this.processingForms[formId] = false;
     }
@@ -152,12 +164,15 @@ export default class SwitchFormAbility extends FormExtensionAbility {
         this.startSwitchPolling(ud, key, newState);
       } else {
         this.switchingDevices[key] = false;
-        await this.pushStateToAllForms(ud, currentOn ?? false, StatusTexts.controlFailed);
+        const settled = await deviceService.getSettledSwitchState(ud.did, ud.siid, ud.piid);
+        const state = settled !== undefined ? settled : currentOn;
+        await this.pushStateToAllForms(ud, state, StatusTexts.controlFailed);
       }
     } catch (toggleError) {
       this.switchingDevices[key] = false;
       hilog.error(DOMAIN, TAG, 'toggle error: %{public}s', String(toggleError));
-      await this.pushStateToAllForms(ud, currentOn ?? false, StatusTexts.controlFailed);
+      const statusText = isAuthError(toggleError) ? StatusTexts.loginExpired : StatusTexts.controlFailed;
+      await this.pushStateToAllForms(ud, currentOn ?? false, statusText);
     }
   }
 
@@ -185,8 +200,14 @@ export default class SwitchFormAbility extends FormExtensionAbility {
     );
 
     hilog.info(DOMAIN, TAG, 'pulse done did=%{public}s ok=%{public}s last=%{public}s', ud.did, String(ok), String(lastKnown));
-    if (!ok) {
-      await this.pushStateToAllForms(ud, lastKnown ?? false, StatusTexts.controlFailed);
+    const finalState = await deviceService.getSettledSwitchState(ud.did, ud.siid, ud.piid);
+    if (finalState !== undefined) {
+      this.deviceStates[key] = finalState;
+      const statusText = !ok && finalState ? StatusTexts.controlFailed :
+        (finalState ? StatusTexts.on : StatusTexts.off);
+      await this.pushStateToAllForms(ud, finalState, statusText);
+    } else if (!ok) {
+      await this.pushStateToAllForms(ud, undefined, StatusTexts.controlFailed);
     }
     this.switchingDevices[key] = false;
   }
@@ -201,28 +222,35 @@ export default class SwitchFormAbility extends FormExtensionAbility {
       try {
         const deviceService = MiDeviceService.getInstance();
         const state = await deviceService.getSwitchStateByDid(ud.did, ud.siid, ud.piid);
-        lastState = state;
         if (state !== undefined) {
+          lastState = state;
           this.deviceStates[key] = state;
         }
-        const statusText = state !== undefined ? (state ? StatusTexts.on : StatusTexts.off) : StatusTexts.unknown;
-        this.pushStateToAllForms(ud, state, statusText);
         if (state !== undefined && state === expectedValue) {
-          hilog.info(DOMAIN, TAG, 'switchPoll reached expected did=%{public}s status=%{public}s count=%{public}d', ud.did, statusText, pollCount);
           this.switchingDevices[key] = false;
+          await this.pushStateToAllForms(ud, state, state ? StatusTexts.on : StatusTexts.off);
+          hilog.info(DOMAIN, TAG, 'switchPoll reached expected did=%{public}s status=%{public}s count=%{public}d',
+            ud.did, state ? StatusTexts.on : StatusTexts.off, pollCount);
           return;
         }
-        hilog.info(DOMAIN, TAG, 'switchPoll did=%{public}s status=%{public}s count=%{public}d', ud.did, statusText, pollCount);
+        if (pollCount >= maxPolls) {
+          this.switchingDevices[key] = false;
+          const statusText = lastState === undefined ? StatusTexts.controlFailed :
+            (lastState ? StatusTexts.on : StatusTexts.off);
+          await this.pushStateToAllForms(ud, lastState, statusText);
+          hilog.info(DOMAIN, TAG, 'switchPoll timeout did=%{public}s state=%{public}s count=%{public}d',
+            ud.did, String(lastState), pollCount);
+          return;
+        }
       } catch (e) {
         hilog.error(DOMAIN, TAG, 'switchPoll error: %{public}s', String(e));
+        if (pollCount >= maxPolls) {
+          this.switchingDevices[key] = false;
+          await this.pushStateToAllForms(ud, lastState, StatusTexts.controlFailed);
+          return;
+        }
       }
-      if (pollCount < maxPolls) {
-        setTimeout(poll, intervalMs);
-      } else {
-        this.switchingDevices[key] = false;
-        const fallback = lastState !== undefined ? lastState : this.deviceStates[key];
-        this.pushStateToAllForms(ud, fallback, StatusTexts.controlFailed);
-      }
+      setTimeout(poll, intervalMs);
     };
     setTimeout(poll, intervalMs);
   }
@@ -258,9 +286,8 @@ export default class SwitchFormAbility extends FormExtensionAbility {
 
   private async getWidgetFormData(formId: string): Promise<WidgetFormData> {
     try {
-      await MiAuthService.getInstance().checkLoginStatus();
+      const loggedIn = await MiAuthService.getInstance().checkLoginStatus();
       const deviceService = MiDeviceService.getInstance();
-      await deviceService.refreshOnlineStatus();
       const slotKey = await this.getFormDevice(formId);
       const dim = await this.getCachedDimension(formId);
       if (slotKey.length === 0) {
@@ -269,7 +296,10 @@ export default class SwitchFormAbility extends FormExtensionAbility {
         data.dimension = dim;
         return data;
       }
-
+      if (!loggedIn) {
+        return await this.buildExpiredFormData(deviceService, slotKey, dim);
+      }
+      await deviceService.refreshOnlineStatus();
       const userDevices = await deviceService.getUserDevices();
       const ud = this.findBySlotKey(userDevices, slotKey);
 
@@ -303,8 +333,55 @@ export default class SwitchFormAbility extends FormExtensionAbility {
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'getWidgetFormData error: %{public}s', String(e));
       const data = new WidgetFormData();
-      data.statusText = StatusTexts.loadFailed;
+      if (isAuthError(e)) {
+        data.statusText = StatusTexts.loginExpired;
+      } else {
+        data.statusText = StatusTexts.loadFailed;
+      }
+      data.dimension = await this.getCachedDimension(formId);
       return data;
+    }
+  }
+
+  private async buildExpiredFormData(deviceService: MiDeviceService, slotKey: string, dim: string): Promise<WidgetFormData> {
+    const data = new WidgetFormData();
+    data.statusText = StatusTexts.loginExpired;
+    data.dimension = dim;
+    try {
+      const userDevices = await deviceService.getUserDevices();
+      const ud = this.findBySlotKey(userDevices, slotKey);
+      if (ud !== null) {
+        data.did = ud.did;
+        data.siid = ud.siid;
+        data.piid = ud.piid;
+        data.deviceName = UserDevice.getDisplayName(ud);
+        data.iconType = ud.icon;
+      }
+    } catch (e) {
+      hilog.warn(DOMAIN, TAG, 'buildExpiredFormData local devices failed: %{public}s', String(e));
+    }
+    return data;
+  }
+
+  private async pushStatusText(formId: string, statusText: string): Promise<void> {
+    const seq = this.beginPush(formId);
+    try {
+      const data = new WidgetFormData();
+      data.statusText = statusText;
+      data.dimension = await this.getCachedDimension(formId);
+      const slotKey = await this.getFormDevice(formId);
+      const userDevices = await MiDeviceService.getInstance().getUserDevices();
+      const ud = this.findBySlotKey(userDevices, slotKey);
+      if (ud !== null) {
+        data.did = ud.did;
+        data.siid = ud.siid;
+        data.piid = ud.piid;
+        data.deviceName = UserDevice.getDisplayName(ud);
+        data.iconType = ud.icon;
+      }
+      this.enqueueFormUpdate(formId, data, seq);
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, 'pushStatusText error: %{public}s', String(e));
     }
   }
 
@@ -414,18 +491,17 @@ export default class SwitchFormAbility extends FormExtensionAbility {
   }
 
   private async pushNoDevice(formId: string): Promise<void> {
+    const seq = this.beginPush(formId);
     const data = new WidgetFormData();
     data.statusText = StatusTexts.noDevice;
     data.dimension = await this.getCachedDimension(formId);
-    try {
-      await formProvider.updateForm(formId, formBindingData.createFormBindingData(data));
-    } catch (e) {
-      hilog.error(DOMAIN, TAG, 'pushNoDevice error: %{public}s', String(e));
-    }
+    this.enqueueFormUpdate(formId, data, seq);
   }
 
   private async pushStateToAllForms(ud: UserDevice, state: boolean | undefined, statusText: string): Promise<void> {
     try {
+      this.pushSeq++;
+      const seq = this.pushSeq;
       const slotKey = UserDevice.getSlotKey(ud);
       const isOffline = MiDeviceService.getInstance().isDeviceOnline(ud.did) === false;
       const map = await this.loadFormDeviceMap();
@@ -446,15 +522,41 @@ export default class SwitchFormAbility extends FormExtensionAbility {
         data.iconType = ud.icon;
         data.dimension = await this.getCachedDimension(fid);
         hilog.info(DOMAIN, TAG, 'pushState -> %{public}s dim=%{public}s status=%{public}s isOn=%{public}s', fid, data.dimension, statusText, String(data.isOn));
-        formProvider.updateForm(fid, formBindingData.createFormBindingData(data)).then(() => {
-          hilog.info(DOMAIN, TAG, 'pushState updateForm OK formId=%{public}s', fid);
-        }).catch((err: Error) => {
-          hilog.error(DOMAIN, TAG, 'pushState updateForm FAIL formId=%{public}s code=%{public}s', fid, String((err as BusinessError).code));
-        });
+        const latest = this.latestFormSeq[fid];
+        if (latest === undefined || seq > latest) {
+          this.latestFormSeq[fid] = seq;
+        }
+        this.enqueueFormUpdate(fid, data, seq);
       }
     } catch (e) {
       hilog.error(DOMAIN, TAG, 'pushStateToAllForms error: %{public}s', String(e));
     }
+  }
+
+  private beginPush(formId: string): number {
+    this.pushSeq++;
+    const seq = this.pushSeq;
+    this.latestFormSeq[formId] = seq;
+    return seq;
+  }
+
+  private enqueueFormUpdate(formId: string, data: WidgetFormData, seq: number): void {
+    const existing = this.formUpdateChains[formId];
+    const previous: Promise<void> = existing !== undefined ? existing : Promise.resolve();
+    const next: Promise<void> = previous.then(async (): Promise<void> => {
+      if (this.latestFormSeq[formId] !== seq) {
+        hilog.info(DOMAIN, TAG, 'drop stale form update formId=%{public}s seq=%{public}d', formId, seq);
+        return;
+      }
+      try {
+        await formProvider.updateForm(formId, formBindingData.createFormBindingData(data));
+        hilog.info(DOMAIN, TAG, 'updateForm OK formId=%{public}s seq=%{public}d', formId, seq);
+      } catch (err) {
+        hilog.error(DOMAIN, TAG, 'updateForm FAIL formId=%{public}s seq=%{public}d: %{public}s',
+          formId, seq, String(err));
+      }
+    });
+    this.formUpdateChains[formId] = next;
   }
 
   private async loadFormDeviceMap(): Promise<Record<string, string>> {

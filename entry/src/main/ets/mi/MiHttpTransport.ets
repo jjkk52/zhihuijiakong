@@ -97,7 +97,7 @@ export class MiHttpTransport {
           hilog.info(DOMAIN, TAG, 'request done code=%{public}d cookies=%{public}d captured=%{public}d',
             response.responseCode, Object.keys(this.cookieJar).length, capturedCookies.length);
           MiDebug.logResponse('HTTP', response.responseCode, respHeaders, result);
-          const hr: MiHttpResp = { result: result, headers: respHeaders };
+          const hr: MiHttpResp = { result: result, headers: respHeaders, statusCode: response.responseCode };
           resolve(hr);
         }
       });

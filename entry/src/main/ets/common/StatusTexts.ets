@@ -6,6 +6,7 @@ export class StatusTexts {
   static readonly off: string = '已关闭';
   static readonly offline: string = '已离线';
   static readonly unknown: string = '状态未知';
+  static readonly loginExpired: string = '登录已过期';
   static readonly noDevice: string = '无设备';
   static readonly controlFailed: string = '控制失败';
   static readonly loadFailed: string = '获取失败';

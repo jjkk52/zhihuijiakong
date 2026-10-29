@@ -4,6 +4,7 @@ import { MiAuthService } from '../mijia/MiAuthService';
 import { MiDeviceService } from '../mijia/MiDeviceService';
 import { MiDevice, MiToken, UserDevice, DeviceIcon, getIconText, isMultiSlotProfile, getDeviceProfile, getDeviceHomeRoomText } from '../mi/types';
 import { PreferencesUtil } from '../mijia/PreferencesUtil';
+import { isAuthError } from '../mi/MiErrors';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const DOMAIN = 0x0200;
@@ -150,17 +151,32 @@ struct SettingsPage {
 
   async initPage(): Promise<void> {
     try {
+      const savedPhone = await PreferencesUtil.getStr(LOGIN_PHONE_KEY, '');
+      if (savedPhone.length > 0 && this.phone.length === 0) {
+        this.phone = savedPhone;
+      }
       this.isLoggedIn = await this.authService.checkLoginStatus();
       if (this.isLoggedIn) {
-        this.loginPhone = await PreferencesUtil.getStr(LOGIN_PHONE_KEY, '');
+        this.loginPhone = savedPhone;
+        this.loginError = '';
         this.userDevices = await this.deviceService.getUserDevices();
         this.userDevices = await this.deviceService.enrichHomeRooms(this.userDevices);
         this.devicesVersion++;
         this.preloadDevices();
+      } else {
+        this.loginPhone = '';
+        if (savedPhone.length > 0) {
+          this.loginError = $r('app.string.login_expired_hint');
+        }
       }
       hilog.info(DOMAIN, TAG, 'initPage isLoggedIn=%{public}s', String(this.isLoggedIn));
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'initPage error: %{public}s', String(error));
+      if (isAuthError(error)) {
+        this.isLoggedIn = false;
+        this.loginPhone = '';
+        this.loginError = $r('app.string.login_expired_hint');
+      }
     }
   }
 
@@ -196,6 +212,7 @@ struct SettingsPage {
       this.loginPhone = this.phone;
       await PreferencesUtil.saveStr(LOGIN_PHONE_KEY, this.phone);
       this.loginError = '';
+      this.deviceService.clearCache();
       this.userDevices = await this.deviceService.getUserDevices();
       this.devicesVersion++;
       hilog.info(DOMAIN, TAG, 'login success');
@@ -241,7 +258,13 @@ struct SettingsPage {
       hilog.info(DOMAIN, TAG, 'loadDevices count=%{public}d', this.allDevices.length);
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'loadDevices error: %{public}s', String(error));
-      this.loginError = $r('app.string.load_devices_failed', String(error));
+      if (isAuthError(error)) {
+        this.isLoggedIn = false;
+        this.loginPhone = '';
+        this.loginError = $r('app.string.login_expired_hint');
+      } else {
+        this.loginError = $r('app.string.load_devices_failed', String(error));
+      }
     } finally {
       this.isLoadingDevices = false;
     }
@@ -252,7 +275,9 @@ struct SettingsPage {
       this.showDeviceList = false;
     } else {
       this.loadDevices().then(() => {
-        this.showDeviceList = true;
+        if (this.isLoggedIn) {
+          this.showDeviceList = true;
+        }
       }).catch((e: Object) => {
         hilog.error(DOMAIN, TAG, 'toggleDeviceList error: %{public}s', String(e));
       });

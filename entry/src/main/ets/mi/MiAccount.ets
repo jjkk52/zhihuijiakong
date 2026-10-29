@@ -16,6 +16,7 @@ const SERVICE_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
 const RATE_LIMIT_CODE = 70022;
 const LOGIN_RETRY_MAX = 5;
 const LOGIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+const REFRESH_MIN_INTERVAL_MS = 60 * 1000;
 const UA_LOGIN = 'APP/com.xiaomi.mihome APPV/11.3.203 iosPassportSDK/4.2.50 iOS/26.3.1 MK/aVBob25lMTcsMg== DEVT/aVBob25l DEVS/aU9T BRA/QXBwbGU= L/zh_CN';
 const UA_OTP_TEMPLATE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 iOS/26.3.1 MiHome/11.3.203 iPhone/iPhone17,2 DeviceId/%DEVICEID% APP/com.xiaomi.mihome APPV/11.3.203 Platform/iPhone Region/CN /xiaomi/miuibrowser/4.3/smartHome/ios/iPhone17,2/11.3.203 APP/com.xiaomi.mihome APPV/11.3.203 iosPassportSDK/4.2.50 iOS/26.3.1 MK/aVBob25lMTcsMg== DEVT/aVBob25l DEVS/aU9T BRA/QXBwbGU= L/zh_CN';
 
@@ -38,6 +39,8 @@ export class MiAccount {
   private pendingOtp: MiOtpState | null = null;
   private deviceId: string = '';
   private loginCooldown: LoginCooldown = new LoginCooldown(LOGIN_RETRY_MAX, LOGIN_COOLDOWN_MS);
+  private refreshInFlight: Promise<boolean> | null = null;
+  private lastRefreshAttemptTime: number = 0;
 
   constructor(username: string, password: string, tokenStore: MiTokenStore) {
     this.username = username;
@@ -53,9 +56,15 @@ export class MiAccount {
     return this.pendingOtp !== null;
   }
 
-  invalidateToken(): void {
-    this.token = null;
+  async invalidateToken(): Promise<void> {
     hilog.info(DOMAIN, TAG, 'invalidateToken');
+    await this.clearSession();
+  }
+
+  private async clearSession(): Promise<void> {
+    this.token = null;
+    this.transport.clearCookies();
+    await this.tokenStore.clearToken();
   }
 
   importToken(token: MiToken): void {
@@ -115,6 +124,30 @@ export class MiAccount {
     if (this.token === null) {
       return false;
     }
+    if (this.refreshInFlight !== null) {
+      hilog.info(DOMAIN, TAG, 'refreshToken join in-flight request');
+      return await this.refreshInFlight;
+    }
+    const now = Date.now();
+    if (this.lastRefreshAttemptTime > 0 && (now - this.lastRefreshAttemptTime) < REFRESH_MIN_INTERVAL_MS) {
+      hilog.warn(DOMAIN, TAG, 'refreshToken skipped, last attempt %{public}dms ago',
+        now - this.lastRefreshAttemptTime);
+      return false;
+    }
+    this.lastRefreshAttemptTime = now;
+    const task = this.doRefreshToken(sid);
+    this.refreshInFlight = task;
+    try {
+      return await task;
+    } finally {
+      this.refreshInFlight = null;
+    }
+  }
+
+  private async doRefreshToken(sid: string): Promise<boolean> {
+    if (this.token === null) {
+      return false;
+    }
     const old = this.token;
     this.deviceId = old.deviceId;
     hilog.info(DOMAIN, TAG, 'refreshToken start userId=%{public}s', old.userId);
@@ -122,17 +155,25 @@ export class MiAccount {
     this.transport.clearCookies();
     try {
       this.loginCooldown.check(Date.now());
+    } catch (cooldownError) {
+      hilog.warn(DOMAIN, TAG, 'refreshToken blocked by cooldown: %{public}s', String(cooldownError));
+      MiDebug.log('Account', 'refreshToken cooldown=' + String(cooldownError));
+      await this.clearSession();
+      return false;
+    }
+    try {
       const resp = await this.serviceLogin('serviceLogin?sid=' + sid + '&_json=true', null);
       if (resp['code'] !== 0) {
         const code = Number(resp['code']);
         if (code === RATE_LIMIT_CODE) {
-          this.recordRateLimitFailure(String(resp['tips'] ?? ''));
+          this.loginCooldown.recordFailure(Date.now());
+          hilog.warn(DOMAIN, TAG, 'refreshToken rate limited failures=%{public}d tips=%{public}s',
+            this.loginCooldown.getFailures(), String(resp['tips'] ?? ''));
+          MiDebug.log('Account', 'refreshToken rate limited tips=' + String(resp['tips'] ?? ''));
         }
         hilog.warn(DOMAIN, TAG, 'refreshToken rejected, require relogin code=%{public}s', String(resp['code']));
         MiDebug.log('Account', 'refreshToken rejected code=' + String(resp['code']));
-        this.token = null;
-        this.transport.clearCookies();
-        await this.tokenStore.clearToken();
+        await this.clearSession();
         return false;
       }
       const newUserId = String(resp['userId'] ?? old.userId);
@@ -142,7 +183,9 @@ export class MiAccount {
       const nonce = String(resp['nonce'] ?? '');
       const ssecurity = String(resp['ssecurity'] ?? '');
       if (location.length === 0 || nonce.length === 0 || ssecurity.length === 0) {
-        hilog.warn(DOMAIN, TAG, 'refreshToken missing sign fields');
+        hilog.warn(DOMAIN, TAG, 'refreshToken missing sign fields, require relogin');
+        MiDebug.log('Account', 'refreshToken missing sign fields');
+        await this.clearSession();
         return false;
       }
       const serviceToken = await this.securityTokenService(location, nonce, ssecurity);
@@ -156,11 +199,12 @@ export class MiAccount {
       };
       this.token = tk;
       await this.tokenStore.saveToken(tk);
+      this.loginCooldown.reset();
       hilog.info(DOMAIN, TAG, 'refreshToken success userId=%{public}s', newUserId);
       MiDebug.log('Account', 'refreshToken OK userId=' + newUserId);
       return true;
     } catch (e) {
-      hilog.error(DOMAIN, TAG, 'refreshToken error: %{public}s', String(e));
+      hilog.error(DOMAIN, TAG, 'refreshToken transient error, keep token: %{public}s', String(e));
       MiDebug.log('Account', 'refreshToken error=' + String(e));
       return false;
     }
@@ -250,6 +294,7 @@ export class MiAccount {
     };
     this.token = tk;
     await this.tokenStore.saveToken(tk);
+    this.loginCooldown.reset();
     hilog.info(DOMAIN, TAG, 'login success, userId=%{public}s', userId);
     MiDebug.log('Account', 'login OK userId=' + userId);
     return tk;
@@ -304,6 +349,7 @@ export class MiAccount {
     this.token = tk;
     await this.tokenStore.saveToken(tk);
     this.pendingOtp = null;
+    this.loginCooldown.reset();
     hilog.info(DOMAIN, TAG, 'loginWithOtp success, userId=%{public}s', userId);
     MiDebug.log('Account', 'loginWithOtp OK userId=' + userId);
     return tk;

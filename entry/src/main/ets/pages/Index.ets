@@ -1,6 +1,7 @@
 import { MiDeviceService } from '../mijia/MiDeviceService';
 import { MiAuthService } from '../mijia/MiAuthService';
 import { UserDevice, getIconText } from '../mi/types';
+import { isAuthError } from '../mi/MiErrors';
 import { router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
@@ -16,15 +17,14 @@ struct Index {
   @State deviceStates: Record<string, boolean | undefined> = {} as Record<string, boolean | undefined>;
   @State loadingDids: Record<string, boolean> = {} as Record<string, boolean>;
   @State hasToken: boolean = false;
+  @State authExpired: boolean = false;
   @State isRefreshing: boolean = false;
   @State showDetail: boolean = false;
   private deviceService: MiDeviceService = MiDeviceService.getInstance();
   private authService: MiAuthService = MiAuthService.getInstance();
   private refreshTimer: number = -1;
-
-  aboutToAppear(): void {
-    this.initPage();
-  }
+  private authToastShown: boolean = false;
+  private stateVersion: Record<string, number> = {} as Record<string, number>;
 
   onPageShow(): void {
     this.initPage();
@@ -37,6 +37,10 @@ struct Index {
   async initPage(): Promise<void> {
     try {
       this.hasToken = await this.authService.checkLoginStatus();
+      if (this.hasToken) {
+        this.authExpired = false;
+        this.authToastShown = false;
+      }
       this.userDevices = await this.deviceService.getUserDevices();
       this.userDevices = await this.deviceService.enrichHomeRooms(this.userDevices);
       this.devicesVersion++;
@@ -46,10 +50,29 @@ struct Index {
       } else {
         this.stopAutoRefresh();
       }
-      hilog.info(DOMAIN, TAG, 'initPage devices=%{public}d hasToken=%{public}s', this.userDevices.length, String(this.hasToken));
+      hilog.info(DOMAIN, TAG, 'initPage devices=%{public}d hasToken=%{public}s authExpired=%{public}s',
+        this.userDevices.length, String(this.hasToken), String(this.authExpired));
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'initPage error: %{public}s', String(error));
+      if (isAuthError(error)) {
+        this.handleAuthExpired();
+      }
       this.isRefreshing = false;
+    }
+  }
+
+  private handleAuthExpired(): void {
+    const wasExpired = this.authExpired;
+    this.hasToken = false;
+    this.authExpired = true;
+    this.stopAutoRefresh();
+    this.deviceStates = {} as Record<string, boolean | undefined>;
+    this.loadingDids = {} as Record<string, boolean>;
+    this.isRefreshing = false;
+    hilog.warn(DOMAIN, TAG, 'auth expired, polling stopped');
+    if (!wasExpired && !this.authToastShown) {
+      this.authToastShown = true;
+      this.showToast($r('app.string.toast_login_expired'));
     }
   }
 
@@ -60,13 +83,19 @@ struct Index {
     if (showRefreshing) {
       this.isRefreshing = true;
     }
+    const versions: Record<string, number> = {} as Record<string, number>;
+    for (let i = 0; i < this.userDevices.length; i++) {
+      const k = this.deviceKey(this.userDevices[i]);
+      versions[k] = this.stateVersion[k] ?? 0;
+    }
     try {
       const refreshed = await this.deviceService.refreshDeviceStates(this.userDevices);
       const merged: Record<string, boolean | undefined> = {} as Record<string, boolean | undefined>;
       const keys = Object.keys(refreshed);
       for (let i = 0; i < keys.length; i++) {
         const key = keys[i];
-        if (this.loadingDids[key] === true) {
+        const versionChanged = (this.stateVersion[key] ?? 0) !== (versions[key] ?? 0);
+        if (this.loadingDids[key] === true || versionChanged) {
           merged[key] = this.deviceStates[key];
         } else {
           merged[key] = refreshed[key];
@@ -75,7 +104,12 @@ struct Index {
       this.deviceStates = merged;
       hilog.info(DOMAIN, TAG, 'refreshStates done');
     } catch (error) {
-      hilog.error(DOMAIN, TAG, 'refreshStates error: %{public}s', String(error));
+      if (isAuthError(error)) {
+        hilog.warn(DOMAIN, TAG, 'refreshStates auth expired: %{public}s', String(error));
+        this.handleAuthExpired();
+      } else {
+        hilog.error(DOMAIN, TAG, 'refreshStates error: %{public}s', String(error));
+      }
     }
     if (showRefreshing) {
       this.isRefreshing = false;
@@ -84,6 +118,9 @@ struct Index {
 
   startAutoRefresh(): void {
     this.stopAutoRefresh();
+    if (!this.hasToken) {
+      return;
+    }
     this.refreshTimer = setInterval(() => {
       this.refreshStates();
     }, REFRESH_INTERVAL_MS);
@@ -109,7 +146,7 @@ struct Index {
     if (this.loadingDids[key]) {
       return;
     }
-    this.loadingDids[key] = true;
+    this.setLoading(key, true);
     hilog.info(DOMAIN, TAG, 'onDeviceClick did=%{public}s siid=%{public}d piid=%{public}d momentary=%{public}s', ud.did, ud.siid, ud.piid, String(ud.momentary));
 
     if (UserDevice.isMomentary(ud)) {
@@ -121,24 +158,17 @@ struct Index {
       const newState = await this.deviceService.toggleSwitchByDid(ud.did, ud.siid, ud.piid);
       if (newState !== undefined) {
         this.deviceService.pollSwitchState(ud.did, ud.siid, ud.piid, newState, (state: boolean | undefined) => {
-          this.loadingDids[key] = false;
-          const newStates: Record<string, boolean | undefined> = {} as Record<string, boolean | undefined>;
-          const keys = Object.keys(this.deviceStates);
-          for (let i = 0; i < keys.length; i++) {
-            newStates[keys[i]] = this.deviceStates[keys[i]];
-          }
-          newStates[key] = state;
-          this.deviceStates = newStates;
+          this.setLoading(key, false);
+          this.setDeviceState(key, state);
         });
       } else {
-        this.loadingDids[key] = false;
+        this.setLoading(key, false);
         this.showToast($r('app.string.toast_control_failed'));
       }
     } catch (error) {
-      this.loadingDids[key] = false;
-      const msg = String(error);
-      if (msg.includes('认证失效') || msg.includes('auth')) {
-        this.showToast($r('app.string.toast_login_expired'));
+      this.setLoading(key, false);
+      if (isAuthError(error)) {
+        this.handleAuthExpired();
       } else {
         this.showToast($r('app.string.toast_control_failed'));
       }
@@ -157,19 +187,40 @@ struct Index {
           }
         }
       );
+      const finalState = await this.deviceService.getSettledSwitchState(ud.did, ud.siid, ud.piid);
+      if (finalState !== undefined) {
+        this.setDeviceState(key, finalState);
+      } else if (!ok) {
+        this.setDeviceState(key, undefined);
+      }
       if (!ok) {
         this.showToast($r('app.string.toast_control_failed'));
       }
     } catch (error) {
       hilog.error(DOMAIN, TAG, 'runPulseFromPage error: %{public}s', String(error));
-      this.showToast($r('app.string.toast_control_failed'));
+      if (isAuthError(error)) {
+        this.handleAuthExpired();
+      } else {
+        this.showToast($r('app.string.toast_control_failed'));
+      }
     } finally {
-      this.loadingDids[key] = false;
-      this.setDeviceState(key, this.deviceStates[key]);
+      this.setLoading(key, false);
     }
   }
 
+  private setLoading(key: string, loading: boolean): void {
+    const next: Record<string, boolean> = {} as Record<string, boolean>;
+    const keys = Object.keys(this.loadingDids);
+    for (let i = 0; i < keys.length; i++) {
+      next[keys[i]] = this.loadingDids[keys[i]];
+    }
+    next[key] = loading;
+    this.loadingDids = next;
+  }
+
   private setDeviceState(key: string, state: boolean | undefined): void {
+    const current = this.stateVersion[key] ?? 0;
+    this.stateVersion[key] = current + 1;
     const newStates: Record<string, boolean | undefined> = {} as Record<string, boolean | undefined>;
     const keys = Object.keys(this.deviceStates);
     for (let i = 0; i < keys.length; i++) {
@@ -197,6 +248,9 @@ struct Index {
 
   private getDeviceStatusText(ud: UserDevice): ResourceStr {
     const key = this.deviceKey(ud);
+    if (this.authExpired) {
+      return $r('app.string.status_login_expired');
+    }
     if (this.loadingDids[key]) {
       return $r('app.string.status_switching');
     }
@@ -295,11 +349,11 @@ struct Index {
 
       if (!this.hasToken) {
         Column() {
-          Text($r('app.string.not_logged_in'))
+          Text(this.authExpired ? $r('app.string.login_expired_title') : $r('app.string.not_logged_in'))
             .fontSize(18)
             .fontColor($r('app.color.icon_off'))
             .margin({ bottom: 12 })
-          Text($r('app.string.login_prompt'))
+          Text(this.authExpired ? $r('app.string.login_expired_prompt') : $r('app.string.login_prompt'))
             .fontSize(14)
             .fontColor($r('app.color.brand_primary'))
             .onClick(() => {

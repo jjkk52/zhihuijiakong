@@ -51,6 +51,7 @@ export interface MiOtpState {
 export interface MiHttpResp {
   result: string;
   headers: Record<string, string>;
+  statusCode: number;
 }
 
 export enum DeviceIcon {

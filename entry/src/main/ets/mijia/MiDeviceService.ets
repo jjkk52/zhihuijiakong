@@ -3,6 +3,7 @@ import { MiAuthService } from './MiAuthService';
 import { MiIOService } from '../mi/MiIOService';
 import { MiDevice, UserDevice, SwitchSlot, HomeRoom, DeviceProfile, MiioPropParam, getDeviceProfile, isMultiSlotProfile } from '../mi/types';
 import { PreferencesUtil } from './PreferencesUtil';
+import { MiAuthError, isAuthError } from '../mi/MiErrors';
 
 const DOMAIN = 0x0200;
 const TAG = 'MiDeviceService';
@@ -70,12 +71,19 @@ export class MiDeviceService {
           }
         }
       } catch (e) {
+        if (isAuthError(e)) {
+          throw new MiAuthError(String(e));
+        }
         hilog.warn(DOMAIN, TAG, 'doLoadAllDevices enrich rooms failed: %{public}s', String(e));
       }
       this.allDevicesCache = devices;
       this.allDevicesCacheTime = Date.now();
       return devices;
     } catch (error) {
+      if (isAuthError(error)) {
+        throw new MiAuthError(String(error));
+      }
+      hilog.warn(DOMAIN, TAG, 'doLoadAllDevices failed: %{public}s', String(error));
       return [];
     }
   }
@@ -89,6 +97,9 @@ export class MiDeviceService {
       }
       this.onlineMap = map;
     } catch (e) {
+      if (isAuthError(e)) {
+        throw new MiAuthError(String(e));
+      }
       hilog.warn(DOMAIN, TAG, 'refreshOnlineStatus failed: %{public}s', String(e));
     }
   }
@@ -332,6 +343,9 @@ export class MiDeviceService {
       }
       await PreferencesUtil.saveUserDevices(userDevices);
     } catch (e) {
+      if (isAuthError(e)) {
+        throw new MiAuthError(String(e));
+      }
       hilog.warn(DOMAIN, TAG, 'enrichHomeRooms failed: %{public}s', String(e));
     }
     return userDevices;
@@ -395,6 +409,9 @@ export class MiDeviceService {
         }
       }
     } catch (error) {
+      if (isAuthError(error)) {
+        throw new MiAuthError(String(error));
+      }
       hilog.warn(DOMAIN, TAG, 'refreshDeviceStates batch get failed, fallback to per-device: %{public}s', String(error));
       const promises: Promise<void>[] = [];
       for (let i = 0; i < onlineParams.length; i++) {
@@ -419,6 +436,9 @@ export class MiDeviceService {
       }
       return value === true || value === 1;
     } catch (error) {
+      if (isAuthError(error)) {
+        throw new MiAuthError(String(error));
+      }
       hilog.warn(DOMAIN, TAG, 'getSwitchStateByDid failed did=%{public}s: %{public}s', did, String(error));
       return undefined;
     }
@@ -433,6 +453,9 @@ export class MiDeviceService {
       }
       return result;
     } catch (error) {
+      if (isAuthError(error)) {
+        throw new MiAuthError(String(error));
+      }
       hilog.warn(DOMAIN, TAG, 'toggleSwitchByDid failed did=%{public}s: %{public}s', did, String(error));
       return undefined;
     }
@@ -442,6 +465,9 @@ export class MiDeviceService {
     try {
       return await this.getIOService().setProperty(did, siid, piid, value);
     } catch (error) {
+      if (isAuthError(error)) {
+        throw new MiAuthError(String(error));
+      }
       hilog.warn(DOMAIN, TAG, 'setSwitchStateByDid failed did=%{public}s value=%{public}s: %{public}s',
         did, String(value), String(error));
       return false;
@@ -456,6 +482,9 @@ export class MiDeviceService {
       }
       return value === true || value === 1;
     } catch (error) {
+      if (isAuthError(error)) {
+        throw new MiAuthError(String(error));
+      }
       hilog.warn(DOMAIN, TAG, 'readSwitchState failed did=%{public}s: %{public}s', did, String(error));
       return undefined;
     }
@@ -477,7 +506,8 @@ export class MiDeviceService {
 
     const actuated = await this.setSwitchStateByDid(did, siid, piid, true);
     if (!actuated) {
-      onState(undefined);
+      const failedState = await this.readSettledState(did, siid, piid, 2, intervalMs);
+      onState(failedState);
       return false;
     }
     onState(true);
@@ -499,12 +529,46 @@ export class MiDeviceService {
 
     hilog.warn(DOMAIN, TAG, 'pulseSwitchByDid auto-return timeout did=%{public}s, force reset', did);
     const resetOk = await this.setSwitchStateByDid(did, siid, piid, false);
-    if (resetOk) {
+    const settled = await this.readSettledState(did, siid, piid, 5, intervalMs);
+    if (settled === false) {
+      if (last !== false) {
+        onState(false);
+      }
+      return true;
+    }
+    if (settled === undefined && resetOk) {
       onState(false);
       return true;
     }
-    onState(undefined);
+    onState(settled);
     return false;
+  }
+
+  async getSettledSwitchState(did: string, siid: number, piid: number): Promise<boolean | undefined> {
+    if (this.onlineMap[did] === false) {
+      return undefined;
+    }
+    return await this.readSettledState(did, siid, piid, 5, PULSE_POLL_INTERVAL_MS);
+  }
+
+  private async readSettledState(
+    did: string,
+    siid: number,
+    piid: number,
+    attempts: number,
+    intervalMs: number
+  ): Promise<boolean | undefined> {
+    let last: boolean | undefined = undefined;
+    for (let i = 0; i < attempts; i++) {
+      if (i > 0) {
+        await MiDeviceService.sleep(intervalMs);
+      }
+      const state = await this.readSwitchState(did, siid, piid);
+      if (state !== undefined) {
+        last = state;
+      }
+    }
+    return last;
   }
 
   private static sleep(ms: number): Promise<void> {

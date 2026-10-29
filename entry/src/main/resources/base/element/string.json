@@ -77,6 +77,22 @@
       "value": "状态未知"
     },
     {
+      "name": "status_login_expired",
+      "value": "登录已过期"
+    },
+    {
+      "name": "login_expired_title",
+      "value": "登录已过期"
+    },
+    {
+      "name": "login_expired_prompt",
+      "value": "点击重新登录米家账号"
+    },
+    {
+      "name": "login_expired_hint",
+      "value": "登录已过期，请重新登录"
+    },
+    {
       "name": "status_on",
       "value": "已开启"
     },

@@ -44,11 +44,13 @@ export class MiAuthService {
   async login(username: string, password: string): Promise<MiToken> {
     this.configure(username, password);
     const token = await this.account.login(SID_IO);
+    this.ioService.clearCache();
     return token;
   }
 
   async loginWithOtp(otp: string): Promise<MiToken> {
     const token = await this.account.loginWithOtp(otp);
+    this.ioService.clearCache();
     return token;
   }
 
@@ -60,8 +62,9 @@ export class MiAuthService {
     if (this.account.isServiceTokenStale()) {
       hilog.info(DOMAIN, TAG, 'serviceToken stale, silent refresh');
       const refreshed = await this.account.refreshToken(SID_IO);
-      if (refreshed) {
-        this.ioService = new MiIOService(this.account);
+      if (!refreshed && this.account.getToken() === null) {
+        hilog.warn(DOMAIN, TAG, 'serviceToken refresh rejected, session expired');
+        return false;
       }
     }
     return this.account.getToken() !== null;
@@ -73,6 +76,7 @@ export class MiAuthService {
 
   async logout(): Promise<void> {
     await this.account.logout();
+    this.ioService.clearCache();
   }
 
   async clearCache(): Promise<void> {

@@ -4,6 +4,7 @@ import { MiHttpTransport } from './MiHttpTransport';
 import { MiAccount } from './MiAccount';
 import { MiDevice, MiioPropParam, MiioResultItem, MiioResponse, MiHttpResp, HomeRoom, MiToken, protectBigNumbers } from './types';
 import { MiDebug } from './MiDebug';
+import { MiAuthError, MSG_AUTH_EXPIRED, MSG_NOT_LOGGED_IN } from './MiErrors';
 import { PreferencesUtil } from '../mijia/PreferencesUtil';
 
 const DOMAIN = 0x0200;
@@ -69,7 +70,7 @@ export class MiIOService {
     hilog.info(DOMAIN, TAG, 'miioRequest uri=%{public}s', uri);
     const currentToken = this.account.getToken();
     if (currentToken === null) {
-      throw new Error('\u672A\u767B\u5F55');
+      throw new MiAuthError(MSG_NOT_LOGGED_IN);
     }
     hilog.info(DOMAIN, TAG, 'miioRequest userId=%{public}s', currentToken.userId);
     MiDebug.log('MiIO', 'miioRequest uri=' + uri);
@@ -78,18 +79,24 @@ export class MiIOService {
       hilog.warn(DOMAIN, TAG, 'miioRequest auth error, try silent refresh uri=%{public}s', uri);
       MiDebug.log('MiIO', 'auth error, silent refresh uri=' + uri);
       const refreshed = await this.account.refreshToken(SID_IO);
-      if (refreshed) {
-        const newToken = this.account.getToken();
-        if (newToken !== null) {
-          respJson = await this.sendMiioRequest(uri, data, newToken);
-        }
+      const newToken = this.account.getToken();
+      if (newToken === null) {
+        throw new MiAuthError(MSG_AUTH_EXPIRED);
+      }
+      if (!refreshed) {
+        throw new Error('\u767B\u5F55\u72B6\u6001\u6821\u9A8C\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5');
+      }
+      respJson = await this.sendMiioRequest(uri, data, newToken);
+      if (this.isAuthError(respJson)) {
+        await this.account.invalidateToken();
+        throw new MiAuthError(MSG_AUTH_EXPIRED);
       }
     }
     const code = respJson.code;
     if (code !== 0) {
       if (this.isAuthError(respJson)) {
-        this.account.invalidateToken();
-        throw new Error('\u8BA4\u8BC1\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55');
+        await this.account.invalidateToken();
+        throw new MiAuthError(MSG_AUTH_EXPIRED);
       }
       throw new Error('MiIO\u8BF7\u6C42\u5931\u8D25: ' + JSON.stringify(respJson));
     }
@@ -125,7 +132,7 @@ export class MiIOService {
     if (respJson.code === 0) {
       return false;
     }
-    if (respJson.code === 401) {
+    if (respJson.code === 401 || respJson.code === 403) {
       return true;
     }
     const message = String(respJson.message ?? '').toLowerCase();
@@ -387,6 +394,10 @@ export class MiIOService {
     const result = await this.miioRequest('/miotspec/prop/get', req);
     const arr = result as MiioResultItem[];
     if (arr && arr.length > 0) {
+      if (arr[0].code === 401 || arr[0].code === 403) {
+        await this.account.invalidateToken();
+        throw new MiAuthError(MSG_AUTH_EXPIRED);
+      }
       if (arr[0].code === 0) {
         return arr[0].value as number | boolean | string;
       }
@@ -399,7 +410,14 @@ export class MiIOService {
     const req = new MiioPropGetReq();
     req.params = params;
     const result = await this.miioRequest('/miotspec/prop/get', req);
-    return result as MiioResultItem[];
+    const arr = result as MiioResultItem[];
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].code === 401 || arr[i].code === 403) {
+        await this.account.invalidateToken();
+        throw new MiAuthError(MSG_AUTH_EXPIRED);
+      }
+    }
+    return arr;
   }
 
   async setProperty(did: string, siid: number, piid: number, value: number | boolean | string): Promise<boolean> {
@@ -410,6 +428,10 @@ export class MiIOService {
     const result = await this.miioRequest('/miotspec/prop/set', req);
     const arr = result as MiioResultItem[];
     if (arr && arr.length > 0) {
+      if (arr[0].code === 401 || arr[0].code === 403) {
+        await this.account.invalidateToken();
+        throw new MiAuthError(MSG_AUTH_EXPIRED);
+      }
       return arr[0].code === 0 || arr[0].code === 1;
     }
     return false;
@@ -460,11 +482,23 @@ export class MiIOService {
   }
 
   private parseJsonResp(resp: MiHttpResp): MiioResponse {
+    if (resp.statusCode === 401 || resp.statusCode === 403) {
+      const unauthorized: MiioResponse = {
+        code: 401,
+        message: 'http unauthorized',
+        result: null
+      };
+      return unauthorized;
+    }
     let text = resp.result;
     if (text.startsWith(JSON_PREFIX)) {
       text = text.substring(JSON_PREFIX.length);
     }
     text = protectBigNumbers(text);
-    return JSON.parse(text) as MiioResponse;
+    try {
+      return JSON.parse(text) as MiioResponse;
+    } catch (e) {
+      throw new Error('MiIO\u54CD\u5E94\u89E3\u6790\u5931\u8D25(status=' + String(resp.statusCode) + ')');
+    }
   }
 }
