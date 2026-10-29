@@ -14,6 +14,17 @@ HarmonyOS / ArkTS third-party Mi Home controller. No backend: the app talks dire
 
 Constraints: compile/target SDK 6.1.1(24), compatible 6.1.0(23). The checkout path must be pure ASCII; non-ASCII paths break hvigor. Version lives in `AppScope/app.json5` — `versionCode` currently tracks `1.0.N` as `100000N`; bump it together with `versionName` and `buildVersion`. `*.hap`, `*.app`, `*.log`, `.deveco/`, `.opencode/`, `sign/`, and `MYpythonSourceCode/` are gitignored.
 
+## Release
+
+Every version bump must also publish a GitHub Release with the unsigned release HAP — a git push alone is not a release.
+
+1. `devecocli build --product release --build-mode release`
+2. Copy `entry/build/release/outputs/default/entry-default-unsigned.hap` to `zhihuijiakong-vX.Y.Z-unsigned.hap`.
+3. `gh release create vX.Y.Z <hap> --title "vX.Y.Z" --notes-file <notes>` (`gh` is authenticated as `jjkk52`).
+4. Verify with `gh release view vX.Y.Z --json assets`.
+
+Upload the unsigned HAP only; never upload the debug-signed HAP or signing material.
+
 ## Process layout
 
 Three entrypoints, two processes:
